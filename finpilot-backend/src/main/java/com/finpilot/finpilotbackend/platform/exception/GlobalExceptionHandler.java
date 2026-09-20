@@ -1,0 +1,97 @@
+package com.finpilot.finpilotbackend.platform.exception;
+
+import com.finpilot.finpilotbackend.finance.exception.InvalidTransactionException;
+import com.finpilot.finpilotbackend.finance.exception.ResourceNotFoundException;
+import com.finpilot.finpilotbackend.finance.exception.StatementImportException;
+import com.finpilot.finpilotbackend.identity.exception.EmailAlreadyExistsException;
+import com.finpilot.finpilotbackend.identity.exception.InvalidCredentialsException;
+import com.finpilot.finpilotbackend.identity.exception.InvalidRefreshTokenException;
+import com.finpilot.finpilotbackend.intelligence.exception.AiNotConfiguredException;
+import com.finpilot.finpilotbackend.intelligence.exception.AiServiceException;
+import com.finpilot.finpilotbackend.planning.exception.InvalidBudgetException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+// Lives in platform/, not identity/ or finance/, because it handles exceptions
+// from every domain (Section 12: Platform = shared cross-domain capabilities).
+// A single global error-shape contract keeps every API error response
+// consistent, regardless of which domain threw it.
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
+        return errorResponse(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidTransactionException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidTransaction(InvalidTransactionException ex) {
+        return errorResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage());
+    }
+
+    @ExceptionHandler(StatementImportException.class)
+    public ResponseEntity<Map<String, Object>> handleStatementImportError(StatementImportException ex) {
+        return errorResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage());
+    }
+
+    @ExceptionHandler(EmailAlreadyExistsException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailExists(EmailAlreadyExistsException ex) {
+        return errorResponse(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCredentials(InvalidCredentialsException ex) {
+        return errorResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
+        return errorResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidBudgetException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidBudget(InvalidBudgetException ex) {
+        return errorResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage());
+    }
+
+    @ExceptionHandler(AiNotConfiguredException.class)
+    public ResponseEntity<Map<String, Object>> handleAiNotConfigured(AiNotConfiguredException ex) {
+        return errorResponse(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable", ex.getMessage());
+    }
+
+    @ExceptionHandler(AiServiceException.class)
+    public ResponseEntity<Map<String, Object>> handleAiServiceError(AiServiceException ex) {
+        return errorResponse(HttpStatus.BAD_GATEWAY, "Bad Gateway", ex.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> fieldErrors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error ->
+                fieldErrors.put(error.getField(), error.getDefaultMessage())
+        );
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Validation Failed");
+        body.put("fieldErrors", fieldErrors);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    private ResponseEntity<Map<String, Object>> errorResponse(HttpStatus status, String error, String message) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", status.value());
+        body.put("error", error);
+        body.put("message", message);
+        return ResponseEntity.status(status).body(body);
+    }
+}
