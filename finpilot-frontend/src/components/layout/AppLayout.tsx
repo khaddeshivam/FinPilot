@@ -1,40 +1,27 @@
-import { Outlet, Link, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
+import { Outlet } from 'react-router-dom';
+import CommandPalette from './CommandPalette';
+import MobileNav from './MobileNav';
+import QuickAdd from './QuickAdd';
+import Sidebar from './Sidebar';
+import Topbar from './Topbar';
+import TransactionDrawer from '../../features/transactions/components/TransactionDrawer';
 
 export default function AppLayout() {
-  const navigate = useNavigate();
-  const logout = useAuthStore((state) => state.logout);
-
-  function handleLogout() {
-    logout();
-    navigate('/login');
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <Link to="/dashboard" className="text-lg font-semibold text-slate-900">
-              FinPilot
-            </Link>
-            <nav className="flex items-center gap-5 text-sm text-slate-500">
-              <Link to="/dashboard" className="hover:text-slate-900">Dashboard</Link>
-              <Link to="/accounts" className="hover:text-slate-900">Accounts</Link>
-              <Link to="/transactions" className="hover:text-slate-900">Transactions</Link>
-              <Link to="/budgets" className="hover:text-slate-900">Budgets</Link>
-              <Link to="/insights" className="hover:text-slate-900">Insights</Link>
-            </nav>
+    <div className="min-h-screen bg-canvas text-ink">
+      <Sidebar />
+      <div className="flex min-h-screen flex-col md:pl-[72px]">
+        <Topbar />
+        <main className="flex-1 pb-24 md:pb-10">
+          <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-8 lg:px-12">
+            <Outlet />
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-slate-500 hover:text-slate-900"
-          >
-            Log out
-          </button>
-        </div>
-      </header>
-      <Outlet />
+        </main>
+      </div>
+      <MobileNav />
+      <CommandPalette />
+      <QuickAdd />
+      <TransactionDrawer />
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import LandingNav from '../../../components/layout/LandingNav';
+import FinPilotSignatureFooter from '../components/FinPilotSignatureFooter';
 
 type Preview = 'Overview' | 'Cash flow' | 'Goals';
 
@@ -19,7 +21,6 @@ function Button({ children, to, onClick }: { children: React.ReactNode; to?: str
 }
 
 export default function LandingPage() {
-  const [menu, setMenu] = useState(false);
   const [preview, setPreview] = useState<Preview>('Overview');
   const [flow, setFlow] = useState(0);
   const [question, setQuestion] = useState(0);
@@ -27,18 +28,13 @@ export default function LandingPage() {
   const [approved, setApproved] = useState(false);
   const months = Math.ceil(84000 / contribution);
   const finish = useMemo(() => { const date = new Date(); date.setMonth(date.getMonth() + months); return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }); }, [months]);
-  const scroll = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); setMenu(false); };
+  const scroll = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); };
   const bars = preview === 'Overview' ? [40, 58, 48, 73, 62, 89, 78] : preview === 'Cash flow' ? [68, 51, 81, 55, 76, 62, 91] : [32, 42, 49, 58, 67, 75, 84];
   const stat = preview === 'Overview' ? ['Your financial pulse', '₹2,84,600', '+₹12,480 this month'] : preview === 'Cash flow' ? ['Cash flow', '₹18,240', 'Available after essentials'] : ['Home fund', '₹78,000', '48% of your target'];
 
   return <main className="fp-shell" id="top">
     <div className="fp-grid" aria-hidden="true" />
-    <header className="fp-header"><nav className="fp-nav">
-      <a href="#top" onClick={() => scroll('top')} aria-label="FinPilot home"><Brand /></a>
-      <div className="fp-links"><a href="#product" onClick={() => scroll('product')}>Product</a><a href="#how" onClick={() => scroll('how')}>How it works</a><a href="#simulator" onClick={() => scroll('simulator')}>Simulator</a></div>
-      <div className="fp-auth"><Link to="/login">Sign in</Link><Button to="/register">Get started</Button></div>
-      <button className="fp-menu" aria-label="Toggle navigation" aria-expanded={menu} onClick={() => setMenu(!menu)}>{menu ? '×' : '☰'}</button>
-    </nav>{menu && <div className="fp-mobile"><a href="#product" onClick={() => scroll('product')}>Product</a><a href="#how" onClick={() => scroll('how')}>How it works</a><a href="#simulator" onClick={() => scroll('simulator')}>Simulator</a><Link to="/login">Sign in</Link><Button to="/register">Get started</Button></div>}</header>
+    <LandingNav />
 
     <section className="fp-hero"><div className="fp-copy"><p className="fp-label">01 <span /> Financial intelligence, made human</p><h1>Know what your<br />money is <em>saying.</em></h1><p className="fp-description">FinPilot turns financial data into clear context, considered recommendations, and decisions you stay in control of.</p><div className="fp-cta"><Button to="/register">Try FinPilot</Button><button onClick={() => scroll('product')}>See how it thinks ↓</button></div><small>● Built for decisions, not just dashboards.</small></div>
       <div className="fp-orbit"><i /><i /><span className="fp-signal">signal ·</span><span className="fp-context">· context</span><div className="fp-signal-card"><div className="fp-card-title"><Brand /><span>● LIVE SIGNAL</span></div><p>THIS MONTH, SO FAR</p><strong>₹12,480</strong><b>↗ 16.4% more than usual</b><svg viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 62C20 48 30 70 49 52S78 61 95 41s28 12 46-8 26 13 45-9 30 6 48-14 34 8 66-6" /><path d="M0 71C20 57 30 75 52 60s29 7 46-11 27 7 46-12 29 8 47-11 31 4 48-16 33 4 61-6" /></svg><div className="fp-notice">✦ <span><b>A gentle signal:</b> Your usual surplus is growing. There may be room to put some of it to work.</span></div></div></div>
@@ -56,6 +52,6 @@ export default function LandingPage() {
 
     <section className="fp-section fp-approval"><div><p className="fp-label">07 <span /> The human in the loop</p><h2>Good advice waits<br />for a <em>yes.</em></h2><p>FinPilot can prepare the next step. You decide whether it belongs in your life.</p></div><div className="fp-approval-card"><header><small>RECOMMENDATION READY</small><b className={approved ? 'approved' : ''}>● {approved ? 'approved' : 'awaiting approval'}</b></header><div className="fp-recommend"><i>↗</i><div><h3>Move ₹4,800 to your home fund</h3><p>Scheduled after your fixed outgoings</p></div><strong>₹4,800<small>one-time transfer</small></strong></div><p className="fp-reason">This amount has appeared as surplus for four consecutive months. Keeping your existing cash buffer intact leaves room for the unexpected.</p><footer>{approved ? <b className="fp-confirm">✓ Approved and ready when you are.</b> : <><Button onClick={() => setApproved(true)}>Approve recommendation ✓</Button><button className="fp-outline">Review details</button></>}</footer></div></section>
 
-    <footer className="fp-footer"><div><Brand /><h2>Your money already knows.<br /><em>Now you can, too.</em></h2></div><div><b>EXPLORE</b><a href="#product" onClick={() => scroll('product')}>Product</a><a href="#how" onClick={() => scroll('how')}>How it works</a><a href="#ask" onClick={() => scroll('ask')}>Ask FinPilot</a></div><div><b>PRINCIPLES</b><span>Read-only by default</span><span>Reasoning stays visible</span><span>Nothing moves without you</span></div><div><b>GET STARTED</b><span>A calmer, clearer relationship with money starts with seeing the whole picture.</span><Button to="/register">Create an account</Button></div><small>© {new Date().getFullYear()} FinPilot · Made for decisions, not dashboards.</small></footer>
+    <FinPilotSignatureFooter />
   </main>;
 }
