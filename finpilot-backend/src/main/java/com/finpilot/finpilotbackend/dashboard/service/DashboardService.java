@@ -8,7 +8,6 @@ import com.finpilot.finpilotbackend.finance.dto.TransactionDtos.TransactionRespo
 import com.finpilot.finpilotbackend.finance.entity.CategoryType;
 import com.finpilot.finpilotbackend.finance.repository.TransactionRepository;
 import com.finpilot.finpilotbackend.finance.service.AccountService;
-import com.finpilot.finpilotbackend.finance.service.TransactionService;
 import com.finpilot.finpilotbackend.identity.entity.User;
 import com.finpilot.finpilotbackend.planning.dto.BudgetDtos.BudgetResponse;
 import com.finpilot.finpilotbackend.planning.service.BudgetService;
@@ -23,21 +22,16 @@ import java.util.stream.Collectors;
 @Service
 public class DashboardService {
 
-    private static final int RECENT_TRANSACTIONS_LIMIT = 5;
-
     private final AccountService accountService;
-    private final TransactionService transactionService;
     private final TransactionRepository transactionRepository;
     private final BudgetService budgetService;
 
     public DashboardService(
             AccountService accountService,
-            TransactionService transactionService,
             TransactionRepository transactionRepository,
             BudgetService budgetService
     ) {
         this.accountService = accountService;
-        this.transactionService = transactionService;
         this.transactionRepository = transactionRepository;
         this.budgetService = budgetService;
     }
@@ -56,8 +50,12 @@ public class DashboardService {
 
         List<BudgetResponse> budgets = budgetService.listForMonth(user, startOfMonth);
 
-        List<TransactionResponse> recentTransactions = transactionService.listForUser(user).stream()
-                .limit(RECENT_TRANSACTIONS_LIMIT)
+        // Use findTop5 so the DB returns exactly 5 rows instead of loading the
+        // entire transaction history into memory just to take the first five.
+        List<TransactionResponse> recentTransactions = transactionRepository
+                .findTop5ByUserIdOrderByTransactionDateDesc(user.getId())
+                .stream()
+                .map(TransactionResponse::new)
                 .collect(Collectors.toList());
 
         List<CategoryBreakdown> expenseByCategory = transactionRepository

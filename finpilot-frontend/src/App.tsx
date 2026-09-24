@@ -7,15 +7,14 @@ import AccountsPage from './features/accounts/pages/AccountsPage';
 import TransactionsPage from './features/transactions/pages/TransactionsPage';
 import BudgetsPage from './features/budgets/pages/BudgetsPage';
 import InsightsPage from './features/insights/pages/InsightsPage';
+import AskPage from './features/ai/pages/AskPage';
+import ReportsPage from './features/reports/pages/ReportsPage';
+import SettingsPage from './features/settings/pages/SettingsPage';
+import HelpPage from './features/help/pages/HelpPage';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
 import { useAuthStore } from './store/authStore';
 
-// "/" was previously an unconditional redirect straight to /dashboard,
-// which meant every visitor - logged in or not - bounced through /login
-// with no landing page ever shown. This restores an actual first
-// impression for logged-out visitors, while still sending an already
-// logged-in user straight to their dashboard rather than the marketing page.
 function RootRoute() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : <LandingPage />;
@@ -36,6 +35,10 @@ export default function App() {
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/budgets" element={<BudgetsPage />} />
             <Route path="/insights" element={<InsightsPage />} />
+            <Route path="/ai" element={<AskPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/help" element={<HelpPage />} />
           </Route>
         </Route>
 

@@ -44,7 +44,7 @@ export default function LoginPage() {
       {/* Form panel */}
       <div className="flex items-center justify-center bg-paper p-8">
         <div className="w-full max-w-sm">
-          <h1 className="font-display font-semibold text-2xl text-ink mb-1">Welcome back</h1>
+          <h1 className="font-display font-semibold text-2xl text-ink mb-1 tracking-tight">Welcome back</h1>
           <p className="text-sm text-slate-500 mb-6">Log in to FinPilot</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">

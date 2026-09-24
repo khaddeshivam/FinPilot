@@ -5,8 +5,11 @@ import com.finpilot.finpilotbackend.finance.dto.ImportDtos.ImportSummaryResponse
 import com.finpilot.finpilotbackend.finance.dto.ImportDtos.RowResult;
 import com.finpilot.finpilotbackend.finance.dto.TransactionDtos.CreateTransactionRequest;
 import com.finpilot.finpilotbackend.finance.entity.CategoryType;
+import com.finpilot.finpilotbackend.finance.entity.Transaction;
 import com.finpilot.finpilotbackend.finance.exception.StatementImportException;
 import com.finpilot.finpilotbackend.finance.ml.NaiveBayesTextClassifier;
+import com.finpilot.finpilotbackend.finance.repository.AccountRepository;
+import com.finpilot.finpilotbackend.finance.repository.TransactionRepository;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
 import com.finpilot.finpilotbackend.identity.entity.User;
@@ -16,48 +19,62 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// Solves the actual adoption problem flagged earlier in this project's
-// research phase: manual entry alone has poor real-world retention. This
-// lets a user upload a plain CSV (Date,Description,Amount - amount sign
-// indicates income/expense) and get transactions created automatically.
+// CSV statement import with deduplication, flexible column layouts, and
+// multiple date formats. Design choices:
 //
-// Categorization is ML-first: a Naive Bayes classifier trained on the
-// user's OWN transaction history (CategoryPredictionService) is tried
-// first, since it's personalized to how that specific user actually
-// writes descriptions. A fixed keyword list is the fallback for users
-// who don't have enough history yet for the classifier to learn from -
-// this keeps the feature useful from day one, not just after weeks of use.
+// DEDUPLICATION: a SHA-256 fingerprint of (account_id + transaction_date +
+// amount + normalised description) is stored on the transaction row. A unique
+// partial index on that column means re-uploading the same file skips already-
+// imported rows instead of doubling them. Manually-entered transactions leave
+// importFingerprint = null, which is always unique in SQL.
 //
-// Deliberately reuses TransactionService.create() per row instead of
-// writing a second, parallel path to the database - every row still goes
-// through the same ownership checks, category-type validation, and atomic
-// balance update as a manually-entered transaction. This is the same
-// "call into services, not repositories directly" principle the rest of
-// the codebase follows.
+// COLUMN LAYOUTS: many Indian bank CSV exports use separate Debit/Credit
+// columns instead of a single signed Amount column. This service detects
+// which layout is in use from the header row and handles both:
+//   Layout A (3-column): Date, Description, Amount  (positive=income, neg=expense)
+//   Layout B (4-column): Date, Description, Debit, Credit  (bank statement style)
 //
-// Known limitation, stated honestly rather than glossed over: this does
-// not detect or skip duplicate transactions on a repeat upload of the same
-// statement. A real production version would need that - out of scope here.
+// DATE FORMATS: ISO YYYY-MM-DD is tried first; day-first formats
+// dd/MM/yyyy and dd-MM-yyyy are tried as fallbacks so common Indian bank
+// exports parse without requiring the user to pre-process the file.
+//
+// Categorisation is ML-first (personalised Naive Bayes) with keyword fallback.
+// Each row still goes through TransactionService.create() for ownership checks,
+// category-type validation, and balance updates.
 @Service
 public class StatementImportService {
 
-    private static final int MAX_ROWS = 2000; // guards against an accidentally huge upload
+    private static final int MAX_ROWS = 2000;
+
+    // Supported date formats in priority order. ISO first because it is
+    // unambiguous; day-first next because that is the dominant Indian bank format.
+    private static final List<DateTimeFormatter> DATE_FORMATS = List.of(
+            DateTimeFormatter.ISO_LOCAL_DATE,           // 2026-08-15
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),  // 15/08/2026
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),  // 15-08-2026
+            DateTimeFormatter.ofPattern("d/M/yyyy"),    // 5/8/2026
+            DateTimeFormatter.ofPattern("d-M-yyyy")     // 5-8-2026
+    );
 
     private static final Map<String, String> EXPENSE_KEYWORDS = new LinkedHashMap<>();
     private static final Map<String, String> INCOME_KEYWORDS = new LinkedHashMap<>();
 
     static {
-        // Checked in insertion order, first match wins - most specific
-        // merchant names first, generic terms last.
         EXPENSE_KEYWORDS.put("swiggy", "Food");
         EXPENSE_KEYWORDS.put("zomato", "Food");
         EXPENSE_KEYWORDS.put("restaurant", "Food");
@@ -93,42 +110,46 @@ public class StatementImportService {
     }
 
     private final TransactionService transactionService;
+    private final TransactionRepository transactionRepository;
     private final AccountService accountService;
     private final CategoryService categoryService;
     private final CategoryPredictionService categoryPredictionService;
 
     public StatementImportService(
             TransactionService transactionService,
+            TransactionRepository transactionRepository,
             AccountService accountService,
             CategoryService categoryService,
             CategoryPredictionService categoryPredictionService
     ) {
         this.transactionService = transactionService;
+        this.transactionRepository = transactionRepository;
         this.accountService = accountService;
         this.categoryService = categoryService;
         this.categoryPredictionService = categoryPredictionService;
     }
 
     public ImportSummaryResponse importCsv(User user, Long accountId, MultipartFile file) {
-        // Fail fast on account ownership before processing a single row,
-        // rather than discovering it's not the user's account mid-import.
         accountService.findOwnedOrThrow(user, accountId);
 
         Map<String, Long> categoryIdLookup = buildCategoryLookup(user);
-
-        // Train once per import, not once per row - retraining on every
-        // single row would be wasteful when the underlying history doesn't
-        // change mid-import. Empty if the user doesn't have enough history
-        // yet for that type - the row loop falls back to keyword matching
-        // in that case.
         Optional<NaiveBayesTextClassifier> expenseClassifier = categoryPredictionService.trainedClassifierFor(user, CategoryType.EXPENSE);
         Optional<NaiveBayesTextClassifier> incomeClassifier = categoryPredictionService.trainedClassifierFor(user, CategoryType.INCOME);
 
         List<RowResult> results = new ArrayList<>();
         int imported = 0;
+        boolean debitCreditLayout = false;
 
         try (CSVReader reader = new CSVReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            reader.readNext(); // skip header row
+            String[] header = reader.readNext();
+            if (header != null) {
+                // Detect layout from the header row. A header containing both
+                // "debit" and "credit" (case-insensitive) signals the 4-column
+                // bank-statement style; otherwise assume signed-amount style.
+                String headerJoined = String.join(",", header).toLowerCase();
+                debitCreditLayout = headerJoined.contains("debit") && headerJoined.contains("credit");
+            }
+
             String[] row;
             int rowNumber = 1;
 
@@ -139,7 +160,8 @@ public class StatementImportService {
                     break;
                 }
 
-                RowResult result = importRow(user, accountId, row, rowNumber, categoryIdLookup, expenseClassifier, incomeClassifier);
+                RowResult result = importRow(user, accountId, row, rowNumber, categoryIdLookup,
+                        expenseClassifier, incomeClassifier, debitCreditLayout);
                 results.add(result);
                 if (result.isImported()) {
                     imported++;
@@ -154,17 +176,36 @@ public class StatementImportService {
     }
 
     private RowResult importRow(
-            User user, Long accountId, String[] row, int rowNumber, Map<String, Long> categoryIdLookup,
-            Optional<NaiveBayesTextClassifier> expenseClassifier, Optional<NaiveBayesTextClassifier> incomeClassifier
+            User user, Long accountId, String[] row, int rowNumber,
+            Map<String, Long> categoryIdLookup,
+            Optional<NaiveBayesTextClassifier> expenseClassifier,
+            Optional<NaiveBayesTextClassifier> incomeClassifier,
+            boolean debitCreditLayout
     ) {
         try {
-            if (row.length < 3) {
-                return RowResult.skipped(rowNumber, "Expected 3 columns (Date, Description, Amount), found " + row.length);
+            int minColumns = debitCreditLayout ? 4 : 3;
+            if (row.length < minColumns) {
+                return RowResult.skipped(rowNumber, "Expected " + minColumns + " columns, found " + row.length);
             }
 
             LocalDate date = parseDate(row[0].trim());
             String description = row[1].trim();
-            BigDecimal rawAmount = new BigDecimal(row[2].trim());
+
+            BigDecimal rawAmount;
+            if (debitCreditLayout) {
+                // Layout B: columns 3 (debit/withdrawal) and 4 (credit/deposit).
+                // Empty cell means 0 for that side.
+                BigDecimal debit = parseMoney(row[2].trim());
+                BigDecimal credit = parseMoney(row[3].trim());
+                if (debit.compareTo(BigDecimal.ZERO) == 0 && credit.compareTo(BigDecimal.ZERO) == 0) {
+                    return RowResult.skipped(rowNumber, "Both debit and credit are zero");
+                }
+                // Debit is a withdrawal (expense), credit is a deposit (income).
+                rawAmount = credit.compareTo(BigDecimal.ZERO) > 0 ? credit : debit.negate();
+            } else {
+                // Layout A: single signed amount column.
+                rawAmount = new BigDecimal(row[2].trim().replace(",", ""));
+            }
 
             if (date.isAfter(LocalDate.now())) {
                 return RowResult.skipped(rowNumber, "Date is in the future: " + date);
@@ -173,10 +214,16 @@ public class StatementImportService {
                 return RowResult.skipped(rowNumber, "Amount cannot be zero");
             }
 
-            // Convention: positive amount = income, negative = expense -
-            // the same sign convention most bank/spreadsheet exports use.
             CategoryType type = rawAmount.signum() > 0 ? CategoryType.INCOME : CategoryType.EXPENSE;
-            BigDecimal amount = rawAmount.abs();
+            BigDecimal amount = rawAmount.abs().setScale(2, RoundingMode.HALF_UP);
+
+            // Deduplication: compute a stable fingerprint for this row and skip if
+            // it was already imported. This makes re-uploading the same statement
+            // safe - no double-counting, no phantom balance changes.
+            String fingerprint = computeFingerprint(accountId, date, amount, description);
+            if (transactionRepository.existsByImportFingerprint(fingerprint)) {
+                return RowResult.skipped(rowNumber, "Already imported (duplicate row skipped)");
+            }
 
             String categoryName = resolveCategory(user, description, type,
                     type == CategoryType.INCOME ? incomeClassifier : expenseClassifier);
@@ -193,29 +240,55 @@ public class StatementImportService {
             request.setDescription(description);
             request.setTransactionDate(date);
 
-            transactionService.create(user, request);
-            return RowResult.imported(rowNumber, description, categoryName);
+            Transaction created = transactionService.createImported(user, request, fingerprint);
+            return RowResult.imported(rowNumber, created.getDescription(), categoryName);
 
         } catch (DateTimeParseException e) {
-            return RowResult.skipped(rowNumber, "Invalid date format - expected YYYY-MM-DD");
+            return RowResult.skipped(rowNumber, "Unrecognised date format (try YYYY-MM-DD, DD/MM/YYYY, or DD-MM-YYYY)");
         } catch (NumberFormatException e) {
             return RowResult.skipped(rowNumber, "Invalid amount value");
         } catch (Exception e) {
-            // Catch-all so one malformed row never aborts the whole import -
-            // every other row still gets a fair chance to process.
-            return RowResult.skipped(rowNumber, "Could not import this row: " + e.getMessage());
+            // Catch-all so one bad row never aborts the whole import.
+            // Do not forward e.getMessage() - it may contain internal details.
+            return RowResult.skipped(rowNumber, "Could not import this row - check the date and amount format");
         }
     }
 
     private LocalDate parseDate(String value) {
-        return LocalDate.parse(value); // expects ISO format, YYYY-MM-DD
+        for (DateTimeFormatter fmt : DATE_FORMATS) {
+            try {
+                return LocalDate.parse(value, fmt);
+            } catch (DateTimeParseException ignored) {
+                // try next format
+            }
+        }
+        throw new DateTimeParseException("No supported date format matched", value, 0);
     }
 
-    // ML prediction first (personalized to this user's own history), keyword
-    // matching as the fallback - covers brand-new users who have no history
-    // for the classifier to learn from yet, so the feature degrades
-    // gracefully instead of producing no category at all.
-    private String resolveCategory(User user, String description, CategoryType type, Optional<NaiveBayesTextClassifier> classifier) {
+    private BigDecimal parseMoney(String value) {
+        if (value.isEmpty()) return BigDecimal.ZERO;
+        // Strip commas used as thousands separators (e.g. "1,23,456.78")
+        return new BigDecimal(value.replace(",", ""));
+    }
+
+    // SHA-256 of "accountId|date|amount|normalisedDescription" as a hex string.
+    // Stripping whitespace/case from the description guards against trivial
+    // formatting differences in re-exports of the same underlying data.
+    private String computeFingerprint(Long accountId, LocalDate date, BigDecimal amount, String description) {
+        String raw = accountId + "|" + date + "|" + amount.toPlainString() + "|"
+                + description.trim().toLowerCase();
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is mandated by the JVM spec; this can never happen.
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    private String resolveCategory(User user, String description, CategoryType type,
+                                   Optional<NaiveBayesTextClassifier> classifier) {
         if (classifier.isPresent()) {
             Optional<CategoryPredictionResponse> prediction =
                     categoryPredictionService.predictWithClassifier(user, classifier.get(), description, type);
@@ -229,7 +302,6 @@ public class StatementImportService {
     private String suggestCategoryByKeyword(String description, CategoryType type) {
         String lower = description.toLowerCase();
         Map<String, String> keywords = (type == CategoryType.INCOME) ? INCOME_KEYWORDS : EXPENSE_KEYWORDS;
-
         for (Map.Entry<String, String> entry : keywords.entrySet()) {
             if (lower.contains(entry.getKey())) {
                 return entry.getValue();

@@ -43,6 +43,12 @@ public class Transaction {
     @Column(name = "transaction_date", nullable = false)
     private LocalDate transactionDate;
 
+    // Set only for CSV-imported transactions. The unique index on this column
+    // prevents a repeat upload of the same statement from creating duplicate rows.
+    // NULL for manually-entered transactions (NULL != NULL in SQL, so no conflict).
+    @Column(name = "import_fingerprint", length = 64)
+    private String importFingerprint;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -143,5 +149,13 @@ public class Transaction {
 
     public void setTransactionDate(LocalDate transactionDate) {
         this.transactionDate = transactionDate;
+    }
+
+    public String getImportFingerprint() {
+        return importFingerprint;
+    }
+
+    public void setImportFingerprint(String importFingerprint) {
+        this.importFingerprint = importFingerprint;
     }
 }

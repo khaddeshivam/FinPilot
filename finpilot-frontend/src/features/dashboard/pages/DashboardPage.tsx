@@ -1,157 +1,180 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { getDashboard, getTrends } from '../api/dashboardApi';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
-
-const CHART_COLORS = ['#0f172a', '#334155', '#64748b', '#94a3b8', '#cbd5e1', '#e2e8f0'];
-
-const STATUS_STYLES: Record<string, string> = {
-  ON_TRACK: 'bg-emerald-100 text-emerald-700',
-  WARNING: 'bg-amber-100 text-amber-700',
-  EXCEEDED: 'bg-red-100 text-red-700',
-};
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-}
+import { listAccounts } from '../../accounts/api/accountsApi';
+import { getInsights, getNarrative } from '../../insights/api/insightsApi';
+import { listBudgets } from '../../budgets/api/budgetsApi';
+import { formatCurrency, greeting, monthName, percent } from '../../../lib/format';
+import { currentMonthIso } from '../../../lib/format';
+import { useUiStore } from '../../../store/uiStore';
+import Button from '../../../components/ui/Button';
+import PageHeader from '../../../components/layout/PageHeader';
+import Surface from '../../../components/ui/Surface';
+import { PageSkeleton } from '../../../components/ui/Skeleton';
+import FinancialMetric from '../../../components/finance/FinancialMetric';
+import CashFlowChart from '../../../components/finance/CashFlowChart';
+import SpendingBreakdown from '../../../components/finance/SpendingBreakdown';
+import BudgetProgress from '../../../components/finance/BudgetProgress';
+import TransactionRow from '../../../components/finance/TransactionRow';
+import EmptyState from '../../../components/ui/EmptyState';
+import { isAxiosError } from 'axios';
 
 export default function DashboardPage() {
+  const setQuickAdd = useUiStore((s) => s.setQuickAdd);
+  const setSelected = useUiStore((s) => s.setSelectedTransactionId);
+  const month = currentMonthIso();
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => getDashboard(),
   });
-
-  const { data: trends, isLoading: trendsLoading } = useQuery({
-    queryKey: ['trends'],
-    queryFn: () => getTrends(6),
+  const { data: trends = [] } = useQuery({
+    queryKey: ['trends', 12],
+    queryFn: () => getTrends(12),
+  });
+  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: listAccounts });
+  const { data: budgets = [] } = useQuery({
+    queryKey: ['budgets', month],
+    queryFn: () => listBudgets(month),
+  });
+  const { data: insights = [] } = useQuery({
+    queryKey: ['insights'],
+    queryFn: () => getInsights(),
+  });
+  const { data: narrative, error: narrativeError } = useQuery({
+    queryKey: ['narrative'],
+    queryFn: () => getNarrative(),
+    retry: false,
   });
 
-  if (isLoading) {
-    return <div className="p-8 text-slate-500">Loading dashboard...</div>;
+  if (isLoading) return <PageSkeleton />;
+  if (isError || !data) {
+    return <p className="text-sm text-negative">Couldn't load your dashboard. Please try again.</p>;
   }
 
-  if (isError || !data) {
-    return <div className="p-8 text-red-600">Couldn't load your dashboard. Please try again.</div>;
-  }
+  const cash = accounts
+    .filter((a) => a.accountType !== 'CREDIT_CARD')
+    .reduce((sum, a) => sum + a.balance, 0);
+  const savingsRate = data.monthlyIncome > 0 ? (data.netSavings / data.monthlyIncome) * 100 : null;
+  const primaryInsight = insights[0];
+  const narrativeUnavailable = isAxiosError(narrativeError) && narrativeError.response?.status === 503;
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8">
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard label="Total Balance" value={formatCurrency(data.totalBalance)} />
-        <SummaryCard label="Income (this month)" value={formatCurrency(data.monthlyIncome)} tone="positive" />
-        <SummaryCard label="Expenses (this month)" value={formatCurrency(data.monthlyExpense)} tone="negative" />
-        <SummaryCard
-          label="Net Savings"
-          value={formatCurrency(data.netSavings)}
-          tone={data.netSavings >= 0 ? 'positive' : 'negative'}
+    <div>
+      <PageHeader
+        title={greeting()}
+        subtitle={`Here's your financial picture for ${monthName()}.`}
+        actions={
+          <Button onClick={() => setQuickAdd(true, 'transaction')}>+ Add transaction</Button>
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        <FinancialMetric label="Net worth" value={formatCurrency(data.totalBalance)} />
+        <FinancialMetric label="Available cash" value={formatCurrency(cash)} hint="Excludes credit cards" />
+        <FinancialMetric label="Income" value={formatCurrency(data.monthlyIncome)} tone="positive" hint="This month" />
+        <FinancialMetric label="Expenses" value={formatCurrency(data.monthlyExpense)} tone="negative" hint="This month" />
+        <FinancialMetric
+          label="Savings rate"
+          value={savingsRate === null ? '—' : percent(savingsRate)}
+          tone={savingsRate !== null && savingsRate >= 0 ? 'positive' : 'negative'}
+          hint={savingsRate === null ? 'Needs income this month' : 'Of this month’s income'}
         />
       </div>
 
-      {/* Income vs expense trend */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 className="text-sm font-semibold text-slate-900 mb-4">Income vs. expenses — last 6 months</h2>
-        {trendsLoading ? (
-          <p className="text-sm text-slate-400">Loading...</p>
-        ) : !trends || trends.every((t) => t.income === 0 && t.expense === 0) ? (
-          <p className="text-sm text-slate-400">Not enough history yet to show a trend.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={trends.map((t) => ({ ...t, month: t.periodMonth.slice(0, 7) }))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <Tooltip formatter={(value) => (value === undefined ? '' : formatCurrency(Number(value)))} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="income" name="Income" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="expense" name="Expense" stroke="#0f172a" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      <Surface className="mt-6 p-6 sm:p-8">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-medium text-ink">Cash flow</h2>
+            <p className="mt-1 text-[13px] text-muted">Income, expenses, and net movement over the last 12 months.</p>
+          </div>
+        </div>
+        <CashFlowChart trends={trends} />
+      </Surface>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Budgets */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-900 mb-4">Budgets this month</h2>
-          {data.budgets.length === 0 ? (
-            <p className="text-sm text-slate-400">No budgets set for this month yet.</p>
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <Surface className="p-6">
+          <h2 className="text-sm font-medium">Spending breakdown</h2>
+          <p className="mb-5 mt-1 text-[13px] text-muted">By category — this month</p>
+          <SpendingBreakdown items={data.expenseByCategory} />
+        </Surface>
+
+        <Surface className="p-6">
+          <h2 className="text-sm font-medium">Budget health</h2>
+          <p className="mb-5 mt-1 text-[13px] text-muted">{monthName()} spending plan</p>
+          {budgets.length === 0 ? (
+            <EmptyState
+              title="No budgets this month"
+              body="Set category limits and FinPilot will show how this month is tracking."
+              action="Create budget"
+              onAction={() => setQuickAdd(true, 'budget')}
+            />
           ) : (
-            <div className="space-y-3">
-              {data.budgets.map((budget) => (
-                <div key={budget.id} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">{budget.categoryName}</p>
-                    <p className="text-xs text-slate-400">
-                      {formatCurrency(budget.spentAmount)} of {formatCurrency(budget.budgetedAmount)}
-                    </p>
-                  </div>
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${STATUS_STYLES[budget.status]}`}>
-                    {budget.status.replace('_', ' ')}
-                  </span>
-                </div>
+            <div className="space-y-5">
+              {budgets.slice(0, 5).map((budget) => (
+                <BudgetProgress key={budget.id} {...budget} />
               ))}
             </div>
           )}
-        </div>
+        </Surface>
 
-        {/* Expense breakdown chart */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-900 mb-4">Spending by category</h2>
-          {data.expenseByCategory.length === 0 ? (
-            <p className="text-sm text-slate-400">No expenses recorded yet this month.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={data.expenseByCategory}
-                  dataKey="amount"
-                  nameKey="categoryName"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                >
-                  {data.expenseByCategory.map((_, index) => (
-                    <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => (value === undefined ? '' : formatCurrency(Number(value)))} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      {/* Recent transactions */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 className="text-sm font-semibold text-slate-900 mb-4">Recent transactions</h2>
-        {data.recentTransactions.length === 0 ? (
-          <p className="text-sm text-slate-400">No transactions yet.</p>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {data.recentTransactions.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between py-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{tx.description || tx.categoryName}</p>
-                  <p className="text-xs text-slate-400">{tx.categoryName} · {tx.transactionDate}</p>
-                </div>
-                <span className={`text-sm font-medium ${tx.transactionType === 'INCOME' ? 'text-emerald-600' : 'text-slate-800'}`}>
-                  {tx.transactionType === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount)}
-                </span>
-              </div>
-            ))}
+        <Surface className="p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-medium">Recent activity</h2>
+              <p className="mt-1 text-[13px] text-muted">Latest movements across accounts</p>
+            </div>
+            <Link to="/transactions" className="text-[13px] text-muted transition-colors hover:text-ink">
+              View all
+            </Link>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
+          {data.recentTransactions.length === 0 ? (
+            <EmptyState
+              title="No transactions yet"
+              body="Once you add your first transaction, FinPilot will start understanding your spending patterns."
+              action="Add transaction"
+              onAction={() => setQuickAdd(true, 'transaction')}
+            />
+          ) : (
+            <div>
+              {data.recentTransactions.map((tx) => (
+                <TransactionRow key={tx.id} tx={tx} onClick={() => setSelected(tx.id)} />
+              ))}
+            </div>
+          )}
+        </Surface>
 
-function SummaryCard({ label, value, tone }: { label: string; value: string; tone?: 'positive' | 'negative' }) {
-  const toneClass = tone === 'positive' ? 'text-emerald-600' : tone === 'negative' ? 'text-slate-900' : 'text-slate-900';
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <p className="text-xs font-medium text-slate-400 mb-1">{label}</p>
-      <p className={`text-xl font-semibold ${toneClass}`}>{value}</p>
+        <Surface className="p-6">
+          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">FinPilot Intelligence</p>
+          {primaryInsight ? (
+            <>
+              <p className="mt-3 text-[17px] font-medium leading-snug tracking-tight">{primaryInsight.message}</p>
+              {narrative && !narrativeUnavailable && (
+                <p className="mt-3 text-sm leading-relaxed text-muted">{narrative.narrative}</p>
+              )}
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Link
+                  to="/transactions"
+                  className="rounded-[12px] border border-line px-3 py-2 text-[13px] font-medium hover:bg-canvas"
+                >
+                  View transactions
+                </Link>
+                <Link
+                  to="/insights"
+                  className="rounded-[12px] bg-ink px-3 py-2 text-[13px] font-medium text-white hover:bg-ink/90"
+                >
+                  Explain
+                </Link>
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              title="Intelligence is quiet"
+              body="When spending shifts, budgets tighten, or savings improve, that context will land here — grounded in your ledger."
+            />
+          )}
+        </Surface>
+      </div>
     </div>
   );
 }

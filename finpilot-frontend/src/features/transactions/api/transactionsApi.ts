@@ -57,6 +57,18 @@ export async function createTransaction(data: CreateTransactionRequest): Promise
   return response.data;
 }
 
+export async function updateTransaction(
+  id: number,
+  data: CreateTransactionRequest,
+): Promise<TransactionResponse> {
+  const response = await apiClient.put<TransactionResponse>(`/transactions/${id}`, data);
+  return response.data;
+}
+
+export async function deleteTransaction(id: number): Promise<void> {
+  await apiClient.delete(`/transactions/${id}`);
+}
+
 // The backend expects CSV rows as Date,Description,Amount (positive =
 // income, negative = expense) and matches TransactionService's own
 // validation/balance-update path per row - see StatementImportService.

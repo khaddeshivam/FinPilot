@@ -2,7 +2,44 @@
 .idea/
 .vscode/
 *.iml
+*.iws
+*.ipr
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Java / Maven
+**/target/
+**/.classpath
+**/.project
+**/.settings/
+
+# Frontend
+**/node_modules/
+**/dist/
+**/.vite/
+**/.cache/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Coverage / Test Reports
+coverage/
+**/coverage/
+.nyc_output/
+
+# Build / Temporary Files
+*.tmp
+*.temp
+
+# Local Database
+*.db
+*.sqlite
+*.sqlite3

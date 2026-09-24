@@ -41,7 +41,7 @@ public class TransactionService {
     @Transactional
     public TransactionResponse create(User user, CreateTransactionRequest request) {
         // Ownership checks - never trust an ID from the client without confirming
-        // it actually belongs to the authenticated user (Section 22 authorization).
+        // it actually belongs to the authenticated user.
         Account account = accountService.findOwnedOrThrow(user, request.getAccountId());
         Category category = categoryService.findAvailableOrThrow(user, request.getCategoryId());
 
@@ -61,6 +61,34 @@ public class TransactionService {
         applyToBalance(account, request.getTransactionType(), request.getAmount());
 
         return new TransactionResponse(saved);
+    }
+
+    // Used exclusively by StatementImportService. Identical to create() but
+    // also stores the deduplication fingerprint so a repeat upload of the same
+    // file skips this row rather than creating a duplicate. Returns the raw
+    // entity because the import service needs to read back the description for
+    // the RowResult - avoids a second repository lookup.
+    @Transactional
+    public Transaction createImported(User user, CreateTransactionRequest request, String importFingerprint) {
+        Account account = accountService.findOwnedOrThrow(user, request.getAccountId());
+        Category category = categoryService.findAvailableOrThrow(user, request.getCategoryId());
+        validateTypeMatchesCategory(request.getTransactionType(), category);
+
+        Transaction transaction = new Transaction(
+                user,
+                account,
+                category,
+                request.getTransactionType(),
+                request.getAmount(),
+                request.getDescription(),
+                request.getTransactionDate()
+        );
+        transaction.setImportFingerprint(importFingerprint);
+        Transaction saved = transactionRepository.save(transaction);
+
+        applyToBalance(account, request.getTransactionType(), request.getAmount());
+
+        return saved;
     }
 
     // Edit support - the correction path CSV import and ML suggestions need
