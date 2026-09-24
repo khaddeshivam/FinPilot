@@ -44,7 +44,10 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
+        // Normalise email on login to match the normalised value stored at
+        // registration - so "User@example.com" finds the same account as "user@example.com".
+        String email = request.getEmail().trim().toLowerCase();
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(InvalidCredentialsException::new);
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {

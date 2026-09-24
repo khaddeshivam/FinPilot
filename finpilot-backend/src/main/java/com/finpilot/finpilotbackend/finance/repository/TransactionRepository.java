@@ -19,6 +19,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     Optional<Transaction> findByIdAndUserId(Long id, Long userId);
 
+    // Used by CSV import deduplication - checks whether a row with this
+    // fingerprint was already imported so a repeat upload can skip it.
+    boolean existsByImportFingerprint(String importFingerprint);
+
+    // Dashboard recent activity - fetch exactly 5 rows at the DB level
+    // rather than loading all transactions and limiting in memory.
+    List<Transaction> findTop5ByUserIdOrderByTransactionDateDesc(Long userId);
+
     // Used by budget calculations - sums actual spend for one category within
     // one month so it can be compared against the budgeted amount. Returns
     // null (not zero) when there are no matching rows - callers must handle that.

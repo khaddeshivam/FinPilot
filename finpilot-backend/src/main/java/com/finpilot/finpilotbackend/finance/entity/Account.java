@@ -14,6 +14,16 @@ public class Account {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Optimistic locking: two concurrent transactions that both read the same
+    // balance version will conflict on commit - only one will win; the other
+    // gets an OptimisticLockException which Spring retries or surfaces as a
+    // 409. This is the correct guard against the read-modify-write race where
+    // two simultaneous imports on the same account could each read the same
+    // balance, add to it in memory, and silently overwrite each other's update.
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
