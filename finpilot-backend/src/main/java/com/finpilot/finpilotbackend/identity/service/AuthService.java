@@ -60,6 +60,17 @@ public class AuthService {
         return new AuthResponse(accessToken, refreshToken.getToken());
     }
 
+    // Revoke the supplied refresh token so it can never be replayed.
+    // Best-effort: if the token doesn't exist we still succeed silently -
+    // the client-side session is gone either way.
+    @Transactional
+    public void logout(String rawRefreshToken) {
+        refreshTokenRepository.findByToken(rawRefreshToken).ifPresent(token -> {
+            token.setRevoked(true);
+            refreshTokenRepository.save(token);
+        });
+    }
+
     @Transactional
     public AuthResponse refresh(String rawRefreshToken) {
         RefreshToken existing = refreshTokenRepository.findByToken(rawRefreshToken)

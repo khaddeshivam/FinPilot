@@ -11,7 +11,10 @@ public class RegisterRequest {
     private String email;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    // BCrypt only uses the first 72 bytes of the password; silently truncating
+    // longer passwords can create security surprises. Rejecting them at the
+    // validation layer makes the constraint explicit rather than hidden.
+    @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
     private String password;
 
     @NotBlank(message = "Full name is required")
