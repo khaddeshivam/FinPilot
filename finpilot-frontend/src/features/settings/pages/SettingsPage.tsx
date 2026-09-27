@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { getCurrentUser } from '../../auth/api/authApi';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getCurrentUser, logout as apiLogout } from '../../auth/api/authApi';
 import { useAuthStore } from '../../../store/authStore';
 import Button from '../../../components/ui/Button';
 import PageHeader from '../../../components/layout/PageHeader';
@@ -9,8 +9,20 @@ import Skeleton from '../../../components/ui/Skeleton';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const logout = useAuthStore((s) => s.logout);
+  const { logout, refreshToken } = useAuthStore((s) => ({ logout: s.logout, refreshToken: s.refreshToken }));
+  const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({ queryKey: ['me'], queryFn: getCurrentUser });
+
+  async function handleLogout() {
+    // Revoke the refresh token server-side first (best-effort — we log out
+    // locally regardless of whether the API call succeeds).
+    if (refreshToken) {
+      await apiLogout(refreshToken);
+    }
+    logout();
+    queryClient.clear();
+    navigate('/login');
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -35,17 +47,11 @@ export default function SettingsPage() {
       <Surface className="p-6">
         <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">Session</p>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          Access tokens stay in memory. Refreshing the tab signs you out — a deliberate tradeoff until cookie-based
-          sessions exist.
+          Your session is saved for this browser tab. Closing the tab clears it.
+          Logging out also revokes the refresh token on the server.
         </p>
         <div className="mt-4">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              logout();
-              navigate('/login');
-            }}
-          >
+          <Button variant="secondary" onClick={handleLogout}>
             Log out
           </Button>
         </div>
