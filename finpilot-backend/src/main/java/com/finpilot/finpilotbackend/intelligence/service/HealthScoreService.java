@@ -19,12 +19,23 @@ import java.util.List;
 // you're sticking to the budgets you set (budget adherence). Weighted 60/40
 // because savings rate is the more fundamental signal - it matters even for
 // someone who hasn't set any budgets yet.
+//
+// Savings score calibration: a raw savings rate maps poorly to a 0-100 score
+// because 1% → 1 pt and 100% → 100 pts, making "Good" essentially unreachable
+// at normal savings rates. Instead we define a TARGET_SAVINGS_RATE (20%) that
+// earns full marks (100 pts) on this component. Rates above the target are
+// clamped to 100; negative rates (overspending) are clamped to 0.
+// Example: 20% rate → 100 pts → score 0.6×100 + 0.4×70 = 88 (Excellent).
 @Service
 public class HealthScoreService {
 
     private static final BigDecimal SAVINGS_WEIGHT = BigDecimal.valueOf(0.6);
     private static final BigDecimal BUDGET_WEIGHT = BigDecimal.valueOf(0.4);
     private static final BigDecimal NEUTRAL_BUDGET_SCORE = BigDecimal.valueOf(70); // used when no budgets exist yet
+
+    // A 20% savings rate is the target for full marks. Rates above this are
+    // capped at 100; the scaling is (savingsRate / TARGET) * 100.
+    private static final BigDecimal TARGET_SAVINGS_RATE = BigDecimal.valueOf(20);
 
     private final TransactionRepository transactionRepository;
     private final BudgetService budgetService;
@@ -44,9 +55,14 @@ public class HealthScoreService {
                 user.getId(), CategoryType.EXPENSE, startOfMonth, startOfNextMonth));
 
         BigDecimal savingsRate = calculateSavingsRate(income, expense);
-        // Clamp to 0-100 for scoring purposes - a savings rate can be negative
-        // (spent more than earned) but the score component can't go below 0.
-        BigDecimal savingsScore = clamp(savingsRate, BigDecimal.ZERO, BigDecimal.valueOf(100));
+        // Scale: (savingsRate / TARGET_SAVINGS_RATE) * 100, then clamp 0-100.
+        // A 20% rate earns 100 pts; 10% earns 50 pts; negative → 0 pts.
+        BigDecimal savingsScore = clamp(
+                savingsRate.divide(TARGET_SAVINGS_RATE, 4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100)),
+                BigDecimal.ZERO,
+                BigDecimal.valueOf(100)
+        );
 
         List<BudgetResponse> budgets = budgetService.listForMonth(user, startOfMonth);
         BigDecimal budgetAdherence = budgets.isEmpty() ? null : calculateBudgetAdherence(budgets);
