@@ -5,8 +5,11 @@ import { refreshAccessToken } from '../features/auth/api/authApi';
 // baseURL is empty on purpose - Vite's dev proxy (vite.config.ts) forwards
 // /api/* to the Spring Boot backend, so relative paths work in both dev and
 // (once a reverse proxy is set up) production without a config change.
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || '/api/v1';
+
 export const apiClient = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
 });
 
 // Attach the access token to every outgoing request automatically, so
