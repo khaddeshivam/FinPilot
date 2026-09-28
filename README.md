@@ -21,7 +21,7 @@ Spring Boot 3.3 / Java 21 REST API (finpilot-backend/)
   │                   OpenAI narrative + RAG (optional)
   └── platform/    — global exception handler
   ↓
-PostgreSQL (Flyway migrations V1–V9)
+PostgreSQL (Flyway migrations V1–V10)
   ↓ (only when OPENAI_API_KEY is set)
 OpenAI API (gpt-4o-mini + text-embedding-3-small)
 ```

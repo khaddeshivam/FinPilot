@@ -122,7 +122,12 @@ public class GlobalExceptionHandler {
         // and return 500 instead of the semantically correct status.
         if (ex instanceof ErrorResponse er) {
             HttpStatus status = HttpStatus.valueOf(er.getStatusCode().value());
-            return errorResponse(status, status.getReasonPhrase(), status.getReasonPhrase());
+            // Forward the headers carried by the ErrorResponse — most critically the
+            // Allow header that Spring sets on 405 Method Not Allowed responses, which
+            // tells the client which HTTP methods are permitted on that endpoint.
+            Map<String, Object> body =
+                    errorResponse(status, status.getReasonPhrase(), status.getReasonPhrase()).getBody();
+            return ResponseEntity.status(status).headers(er.getHeaders()).body(body);
         }
         // Last-resort catch-all. Never expose the exception message to the
         // client (it may contain stack traces, SQL, or internal paths).

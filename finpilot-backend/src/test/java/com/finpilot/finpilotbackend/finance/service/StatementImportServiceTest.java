@@ -17,11 +17,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 // Covers the two things most likely to go wrong in a CSV import: rows that
@@ -153,13 +159,18 @@ class StatementImportServiceTest {
         // both be imported — they are genuinely distinct real-world transactions.
         // Without the occurrence counter they would share the same fingerprint;
         // the second row would appear already-imported and be silently dropped.
+        // Capture the fingerprints actually passed to createImported and assert they
+        // are distinct — this proves the occurrence-counter logic produces two
+        // different hashes, not just that two rows happened to get through.
         String csv = "Date,Description,Amount\n"
                 + "2026-08-01,Chai,-50\n"
-                + "2026-08-01,Chai,-50\n";   // identical to the row above
-        MockMultipartFile file = csvFile(csv);
+                + "2026-08-01,Chai,-50\n";
 
-        ImportSummaryResponse summary = importService.importCsv(user, 1L, file);
+        ImportSummaryResponse summary = importService.importCsv(user, 1L, csvFile(csv));
 
+        ArgumentCaptor<String> fingerprints = ArgumentCaptor.forClass(String.class);
+        verify(transactionService, times(2)).createImported(any(), any(), fingerprints.capture());
+        assertThat(fingerprints.getAllValues()).hasSize(2).doesNotHaveDuplicates();
         assertThat(summary.getImportedCount()).isEqualTo(2);
         assertThat(summary.getSkippedCount()).isZero();
     }
@@ -167,21 +178,27 @@ class StatementImportServiceTest {
     @Test
     void reImportingTheSameCsvSkipsBothRows() {
         // Re-uploading a file that was previously imported must skip every row.
-        // The DB already has fingerprint for occurrence-1 and occurrence-2,
-        // so both should be reported as "already imported".
+        // Run the import once to learn the exact fingerprints the service produces,
+        // then stub existsByImportFingerprint to return true for those specific values
+        // so the second import sees them as "already in the DB".
         String csv = "Date,Description,Amount\n"
                 + "2026-08-01,Chai,-50\n"
                 + "2026-08-01,Chai,-50\n";
-        MockMultipartFile file = csvFile(csv);
 
-        // Simulate both fingerprints already present in the database.
-        when(transactionRepository.existsByImportFingerprint(anyString())).thenReturn(true);
+        // First import: capture the two distinct fingerprints that get stored.
+        importService.importCsv(user, 1L, csvFile(csv));
+        ArgumentCaptor<String> stored = ArgumentCaptor.forClass(String.class);
+        verify(transactionService, times(2)).createImported(any(), any(), stored.capture());
 
-        ImportSummaryResponse summary = importService.importCsv(user, 1L, file);
+        // Second import: only those exact fingerprints already exist in the DB.
+        stored.getAllValues().forEach(fp ->
+                when(transactionRepository.existsByImportFingerprint(fp)).thenReturn(true));
+        clearInvocations(transactionService);
 
-        assertThat(summary.getImportedCount()).isZero();
+        ImportSummaryResponse summary = importService.importCsv(user, 1L, csvFile(csv));
+
         assertThat(summary.getSkippedCount()).isEqualTo(2);
-        assertThat(summary.getRows()).allMatch(r -> r.getReason().contains("duplicate") || r.getReason().contains("Already imported"));
+        verify(transactionService, never()).createImported(any(), any(), anyString());
     }
 
     private MockMultipartFile csvFile(String content) {

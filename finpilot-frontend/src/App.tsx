@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
 import { useAuthStore } from './store/authStore';
@@ -64,9 +64,13 @@ class ChunkErrorBoundary extends React.Component<
 
 // Combines the error boundary and Suspense fallback into one wrapper so every
 // lazy route gets both without repeating the pair nine times.
+// Keying the boundary by pathname means navigating away from a failed page
+// resets the error state — without this, the "failed to load" UI persists
+// even after the user successfully navigates to a different route.
 function Page({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
   return (
-    <ChunkErrorBoundary>
+    <ChunkErrorBoundary key={pathname}>
       <Suspense fallback={<PageFallback />}>{children}</Suspense>
     </ChunkErrorBoundary>
   );
