@@ -1,6 +1,7 @@
 import { Home, Landmark, Lightbulb, ListOrdered, Wallet } from 'lucide-react';
 
-// Shared navigation item definitions used by both Sidebar and MobileNav.
+// Navigation item definitions used by MobileNav.
+// Sidebar maintains its own separate primary/secondary arrays.
 // Kept in a separate module so each component file only exports components
 // (required for React fast-refresh to work correctly).
 export const mobileNavItems = [

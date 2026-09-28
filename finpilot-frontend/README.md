@@ -4,7 +4,7 @@ React 19 + TypeScript 6 + Vite 8 single-page application.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 20.19+ or 22.12+
 
 ## Development
 

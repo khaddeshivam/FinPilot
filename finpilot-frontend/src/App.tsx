@@ -22,10 +22,14 @@ const ReportsPage     = lazy(() => import('./features/reports/pages/ReportsPage'
 const SettingsPage    = lazy(() => import('./features/settings/pages/SettingsPage'));
 const HelpPage        = lazy(() => import('./features/help/pages/HelpPage'));
 
-// Minimal fallback shown while a lazy chunk loads. Deliberately unstyled so
-// it doesn't flash the app shell before the page is ready.
+// Fallback shown while a lazy chunk loads. The role="status" and visible text
+// let screen readers announce loading state; an empty aria-busy element does not.
 function PageFallback() {
-  return <div className="flex min-h-screen items-center justify-center" aria-busy="true" />;
+  return (
+    <div className="flex min-h-screen items-center justify-center text-sm text-muted" role="status">
+      Loading page…
+    </div>
+  );
 }
 
 // Catches chunk-load failures (e.g. a stale deployment where an old chunk hash

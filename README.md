@@ -43,7 +43,7 @@ OpenAI API (gpt-4o-mini + text-embedding-3-small)
 
 - Java 21+
 - Maven 3.9+
-- Node.js 20+ and npm
+- Node.js 20.19+ or 22.12+ and npm
 - PostgreSQL 15+
 
 ---
