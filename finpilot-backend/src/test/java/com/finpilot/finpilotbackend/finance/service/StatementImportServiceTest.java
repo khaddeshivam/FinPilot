@@ -2,8 +2,9 @@ package com.finpilot.finpilotbackend.finance.service;
 
 import com.finpilot.finpilotbackend.finance.dto.CategoryResponse;
 import com.finpilot.finpilotbackend.finance.dto.ImportDtos.ImportSummaryResponse;
-import com.finpilot.finpilotbackend.finance.dto.TransactionDtos.TransactionResponse;
 import com.finpilot.finpilotbackend.finance.entity.CategoryType;
+import com.finpilot.finpilotbackend.finance.entity.Transaction;
+import com.finpilot.finpilotbackend.finance.repository.TransactionRepository;
 import com.finpilot.finpilotbackend.identity.entity.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +35,8 @@ class StatementImportServiceTest {
     @Mock
     private TransactionService transactionService;
     @Mock
+    private TransactionRepository transactionRepository;
+    @Mock
     private AccountService accountService;
     @Mock
     private CategoryService categoryService;
@@ -44,7 +48,9 @@ class StatementImportServiceTest {
 
     @BeforeEach
     void setUp() {
-        importService = new StatementImportService(transactionService, accountService, categoryService, categoryPredictionService);
+        importService = new StatementImportService(
+                transactionService, transactionRepository, accountService,
+                categoryService, categoryPredictionService);
         user = new User("user@example.com", "hashed", "Test User");
 
         when(categoryService.listForUser(user)).thenReturn(List.of(
@@ -53,7 +59,10 @@ class StatementImportServiceTest {
                 mockCategory(3L, "Salary", CategoryType.INCOME),
                 mockCategory(4L, "Other Income", CategoryType.INCOME)
         ));
-        when(transactionService.create(any(), any())).thenReturn(mock(TransactionResponse.class));
+        // Stub createImported so imported rows return a Transaction with a description.
+        Transaction stubTx = mock(Transaction.class);
+        when(stubTx.getDescription()).thenReturn("stub");
+        when(transactionService.createImported(any(), any(), anyString())).thenReturn(stubTx);
         // No training history yet - forces every row through the keyword
         // fallback path, which is what these tests are actually verifying.
         when(categoryPredictionService.trainedClassifierFor(any(), any())).thenReturn(Optional.empty());
@@ -125,6 +134,43 @@ class StatementImportServiceTest {
 
         assertThat(summary.getImportedCount()).isEqualTo(2);
         assertThat(summary.getSkippedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void twoIdenticalRowsInOneCsvImportAsTwoSeparateTransactions() {
+        // Two purchases with the same account, date, amount, and description should
+        // both be imported — they are genuinely distinct real-world transactions.
+        // Without the occurrence counter they would share the same fingerprint;
+        // the second row would appear already-imported and be silently dropped.
+        String csv = "Date,Description,Amount\n"
+                + "2026-08-01,Chai,-50\n"
+                + "2026-08-01,Chai,-50\n";   // identical to the row above
+        MockMultipartFile file = csvFile(csv);
+
+        ImportSummaryResponse summary = importService.importCsv(user, 1L, file);
+
+        assertThat(summary.getImportedCount()).isEqualTo(2);
+        assertThat(summary.getSkippedCount()).isZero();
+    }
+
+    @Test
+    void reImportingTheSameCsvSkipsBothRows() {
+        // Re-uploading a file that was previously imported must skip every row.
+        // The DB already has fingerprint for occurrence-1 and occurrence-2,
+        // so both should be reported as "already imported".
+        String csv = "Date,Description,Amount\n"
+                + "2026-08-01,Chai,-50\n"
+                + "2026-08-01,Chai,-50\n";
+        MockMultipartFile file = csvFile(csv);
+
+        // Simulate both fingerprints already present in the database.
+        when(transactionRepository.existsByImportFingerprint(anyString())).thenReturn(true);
+
+        ImportSummaryResponse summary = importService.importCsv(user, 1L, file);
+
+        assertThat(summary.getImportedCount()).isZero();
+        assertThat(summary.getSkippedCount()).isEqualTo(2);
+        assertThat(summary.getRows()).allMatch(r -> r.getReason().contains("duplicate") || r.getReason().contains("Already imported"));
     }
 
     private MockMultipartFile csvFile(String content) {

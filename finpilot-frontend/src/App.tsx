@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
@@ -28,6 +28,46 @@ function PageFallback() {
   return <div className="flex min-h-screen items-center justify-center" aria-busy="true" />;
 }
 
+// Catches chunk-load failures (e.g. a stale deployment where an old chunk hash
+// is no longer on the CDN).  Suspense only handles the pending state; a rejected
+// lazy() promise falls through to an error boundary.  Without this, a failed
+// chunk crashes the whole route tree with an uncaught error.
+class ChunkErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8 text-center">
+          <p className="text-sm text-muted">This page failed to load.</p>
+          <button
+            className="text-sm underline"
+            onClick={() => window.location.reload()}
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Combines the error boundary and Suspense fallback into one wrapper so every
+// lazy route gets both without repeating the pair nine times.
+function Page({ children }: { children: React.ReactNode }) {
+  return (
+    <ChunkErrorBoundary>
+      <Suspense fallback={<PageFallback />}>{children}</Suspense>
+    </ChunkErrorBoundary>
+  );
+}
+
 function RootRoute() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : <LandingPage />;
@@ -43,42 +83,15 @@ export default function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
-            <Route
-              path="/dashboard"
-              element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>}
-            />
-            <Route
-              path="/accounts"
-              element={<Suspense fallback={<PageFallback />}><AccountsPage /></Suspense>}
-            />
-            <Route
-              path="/transactions"
-              element={<Suspense fallback={<PageFallback />}><TransactionsPage /></Suspense>}
-            />
-            <Route
-              path="/budgets"
-              element={<Suspense fallback={<PageFallback />}><BudgetsPage /></Suspense>}
-            />
-            <Route
-              path="/insights"
-              element={<Suspense fallback={<PageFallback />}><InsightsPage /></Suspense>}
-            />
-            <Route
-              path="/ai"
-              element={<Suspense fallback={<PageFallback />}><AskPage /></Suspense>}
-            />
-            <Route
-              path="/reports"
-              element={<Suspense fallback={<PageFallback />}><ReportsPage /></Suspense>}
-            />
-            <Route
-              path="/settings"
-              element={<Suspense fallback={<PageFallback />}><SettingsPage /></Suspense>}
-            />
-            <Route
-              path="/help"
-              element={<Suspense fallback={<PageFallback />}><HelpPage /></Suspense>}
-            />
+            <Route path="/dashboard"     element={<Page><DashboardPage /></Page>} />
+            <Route path="/accounts"      element={<Page><AccountsPage /></Page>} />
+            <Route path="/transactions"  element={<Page><TransactionsPage /></Page>} />
+            <Route path="/budgets"       element={<Page><BudgetsPage /></Page>} />
+            <Route path="/insights"      element={<Page><InsightsPage /></Page>} />
+            <Route path="/ai"            element={<Page><AskPage /></Page>} />
+            <Route path="/reports"       element={<Page><ReportsPage /></Page>} />
+            <Route path="/settings"      element={<Page><SettingsPage /></Page>} />
+            <Route path="/help"          element={<Page><HelpPage /></Page>} />
           </Route>
         </Route>
 

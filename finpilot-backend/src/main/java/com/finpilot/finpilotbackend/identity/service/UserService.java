@@ -10,6 +10,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Locale;
+
 @Service
 public class UserService {
 
@@ -26,7 +28,10 @@ public class UserService {
         // Normalise email before the existence check and before storing -
         // prevents "User@example.com" and "user@example.com" being treated
         // as different accounts by the case-sensitive unique index.
-        String email = request.getEmail().trim().toLowerCase();
+        // Locale.ROOT prevents the Turkish-locale dotless-i problem where
+        // "I@example.com".toLowerCase() produces "ı@example.com" instead of
+        // "i@example.com", which would break the duplicate-account check.
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
 
         if (userRepository.existsByEmail(email)) {
             throw new EmailAlreadyExistsException(email);

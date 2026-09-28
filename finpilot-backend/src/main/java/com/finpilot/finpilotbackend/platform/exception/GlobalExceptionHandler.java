@@ -10,9 +10,11 @@ import com.finpilot.finpilotbackend.intelligence.exception.AiNotConfiguredExcept
 import com.finpilot.finpilotbackend.intelligence.exception.AiServiceException;
 import com.finpilot.finpilotbackend.planning.exception.InvalidBudgetException;
 import jakarta.persistence.OptimisticLockException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -102,13 +104,26 @@ public class GlobalExceptionHandler {
     // A concurrent balance update was detected by the @Version optimistic lock.
     // The correct client behaviour is to retry - surface this as 409 Conflict
     // so the frontend can distinguish it from a 400 validation error.
-    @ExceptionHandler(OptimisticLockException.class)
-    public ResponseEntity<Map<String, Object>> handleOptimisticLock(OptimisticLockException ex) {
+    // Both jakarta.persistence.OptimisticLockException (thrown directly by JPA)
+    // and org.springframework.dao.OptimisticLockingFailureException (Spring's
+    // translation of the same JPA exception) are handled here so that either
+    // Spring Data or a raw EntityManager path gets the same 409 response.
+    @ExceptionHandler({OptimisticLockException.class, OptimisticLockingFailureException.class})
+    public ResponseEntity<Map<String, Object>> handleOptimisticLock(Exception ex) {
         return errorResponse(HttpStatus.CONFLICT, "Conflict", "The account was modified by another request - please try again");
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+        // Spring MVC maps well-known protocol errors (405 Method Not Allowed,
+        // 415 Unsupported Media Type, 404 No Handler Found, etc.) to types that
+        // implement org.springframework.web.ErrorResponse and carry the correct
+        // HTTP status code. Without this check the catch-all would swallow them
+        // and return 500 instead of the semantically correct status.
+        if (ex instanceof ErrorResponse er) {
+            HttpStatus status = HttpStatus.valueOf(er.getStatusCode().value());
+            return errorResponse(status, status.getReasonPhrase(), status.getReasonPhrase());
+        }
         // Last-resort catch-all. Never expose the exception message to the
         // client (it may contain stack traces, SQL, or internal paths).
         return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error",

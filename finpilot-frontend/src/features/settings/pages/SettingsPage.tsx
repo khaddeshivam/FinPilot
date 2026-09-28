@@ -9,19 +9,23 @@ import Skeleton from '../../../components/ui/Skeleton';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { logout, refreshToken } = useAuthStore((s) => ({ logout: s.logout, refreshToken: s.refreshToken }));
+  const logout = useAuthStore((s) => s.logout);
+  const refreshToken = useAuthStore((s) => s.refreshToken);
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({ queryKey: ['me'], queryFn: getCurrentUser });
 
   async function handleLogout() {
     // Revoke the refresh token server-side first (best-effort — we log out
     // locally regardless of whether the API call succeeds).
-    if (refreshToken) {
-      await apiLogout(refreshToken);
+    try {
+      if (refreshToken) await apiLogout(refreshToken);
+    } catch {
+      // best-effort: proceed with local logout regardless
+    } finally {
+      logout();
+      queryClient.clear();
+      navigate('/login');
     }
-    logout();
-    queryClient.clear();
-    navigate('/login');
   }
 
   return (
