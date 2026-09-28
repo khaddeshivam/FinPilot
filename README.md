@@ -1,584 +1,189 @@
 # FinPilot
 
-### AI-Native Personal Financial Intelligence Platform
-
-FinPilot is a full-stack financial intelligence platform designed to transform raw financial activity into meaningful insights, financial health signals, budgeting intelligence, and AI-assisted financial understanding.
-
-Instead of treating personal finance as a collection of transactions and charts, FinPilot combines deterministic financial logic with machine learning, retrieval, and LLM-powered intelligence.
+An AI-native personal finance application. Track accounts and transactions, set monthly budgets, and get rule-based insights alongside an optional LLM-powered narrative and RAG question-answering layer — all grounded in your actual ledger data.
 
 ---
 
-## ✨ What is FinPilot?
+## Architecture
 
-Managing money generates a large amount of financial data but often provides very little understanding.
-
-FinPilot is built around a simple idea:
-
-> **Don't just show users what happened with their money — help them understand why it happened and what they can learn from it.**
-
-FinPilot brings together:
-
-* 💳 Accounts and transactions
-* 📊 Financial dashboards
-* 🏷️ Intelligent transaction categorization
-* 📥 Statement importing
-* 🎯 Budget management
-* 🧠 Financial insights
-* ❤️ Financial health scoring
-* 🔎 Retrieval-Augmented Generation (RAG)
-* 🤖 AI-powered financial narratives
-* 📈 Financial trends and analysis
-
----
-
-## 🧠 Product Architecture
-
-```text
-                         ┌──────────────────────┐
-                         │      FinPilot        │
-                         │   Financial Layer    │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   Financial Data     │
-                         │ Accounts / Txns      │
-                         │ Budgets / Categories │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                    ┌─────────────────────────────┐
-                    │     Financial Intelligence  │
-                    └──────────────┬──────────────┘
-                                   │
-              ┌────────────────────┼────────────────────┐
-              ▼                    ▼                    ▼
-        Categorization        Health Score          Insights
-              │                    │                    │
-              └────────────────────┼────────────────────┘
-                                   ▼
-                         ┌──────────────────────┐
-                         │   AI Intelligence   │
-                         │      RAG + LLM      │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   User Understanding │
-                         │  Explain / Discover  │
-                         │   Analyze / Plan     │
-                         └──────────────────────┘
+```
+Browser
+  ↓ HTTPS
+React 19 + Vite 8 (finpilot-frontend/)
+  ↓ /api/v1/* (reverse proxy in production; Vite dev proxy locally)
+Spring Boot 3.3 / Java 21 REST API (finpilot-backend/)
+  ├── identity/    — JWT auth, refresh-token rotation, BCrypt passwords
+  ├── finance/     — accounts, transactions, categories, CSV import,
+  │                  Naive Bayes ML categoriser
+  ├── planning/    — monthly budgets
+  ├── dashboard/   — aggregated summary + trend queries
+  ├── intelligence/ — rule-based insights, health score,
+  │                   OpenAI narrative + RAG (optional)
+  └── platform/    — global exception handler
+  ↓
+PostgreSQL (Flyway migrations V1–V10)
+  ↓ (only when OPENAI_API_KEY is set)
+OpenAI API (gpt-4o-mini + text-embedding-3-small)
 ```
 
 ---
 
-## 🏗️ Architecture
+## Tech stack
 
-FinPilot follows a modular full-stack architecture.
-
-```text
-FinPilot
-│
-├── finpilot-backend
-│   ├── dashboard
-│   ├── finance
-│   ├── identity
-│   ├── intelligence
-│   ├── planning
-│   └── platform
-│
-└── finpilot-frontend
-    ├── components
-    ├── features
-    ├── lib
-    └── store
-```
-
-### Backend Flow
-
-```text
-HTTP Request
-     │
-     ▼
-Controller
-     │
-     ▼
-Service
-     │
-     ├──────────────► Repository
-     │                    │
-     │                    ▼
-     │               PostgreSQL
-     │
-     └──────────────► Intelligence / ML
-```
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4, TanStack Query, Zustand, Recharts |
+| Backend | Java 21, Spring Boot 3.3, Spring Security, JJWT 0.12, OpenCSV |
+| Database | PostgreSQL, Flyway migrations |
+| AI (optional) | OpenAI gpt-4o-mini, text-embedding-3-small |
 
 ---
 
-## ⚙️ Technology Stack
+## Prerequisites
 
-### Frontend
-
-| Technology     | Purpose                     |
-| -------------- | --------------------------- |
-| React          | UI                          |
-| TypeScript     | Type safety                 |
-| Vite           | Development/build tooling   |
-| React Router   | Application routing         |
-| TanStack Query | Server-state management     |
-| Zustand        | Client authentication state |
-| Recharts       | Financial visualization     |
-| Tailwind CSS   | Styling                     |
-
-### Backend
-
-| Technology      | Purpose                     |
-| --------------- | --------------------------- |
-| Java 21         | Backend language            |
-| Spring Boot     | Application framework       |
-| Spring Security | Authentication/security     |
-| JWT             | Token-based authentication  |
-| Spring Data JPA | Persistence                 |
-| PostgreSQL      | Relational database         |
-| Flyway          | Database migrations         |
-| OpenCSV         | Statement importing         |
-| Maven           | Dependency/build management |
-
-### AI / Intelligence
-
-| Technology            | Purpose                     |
-| --------------------- | --------------------------- |
-| OpenAI                | LLM-powered intelligence    |
-| Embeddings            | Semantic representation     |
-| RAG                   | Financial-context retrieval |
-| Naive Bayes           | Transaction categorization  |
-| Vector/math utilities | ML support                  |
+- Java 21+
+- Maven 3.9+
+- Node.js 20.19+ or 22.12+ and npm
+- PostgreSQL 15+
 
 ---
 
-## 🚀 Core Features
+## Quick start (local development)
 
-### 🔐 Authentication
+### 1 — Database
 
-* User registration
-* Login
-* JWT authentication
-* Refresh tokens
-* Protected application routes
-* User management
-
-### 💳 Financial Accounts
-
-Manage financial accounts and associate transactions with their corresponding account context.
-
-### 💰 Transactions
-
-FinPilot provides transaction management with:
-
-* Income
-* Expenses
-* Categories
-* Transaction history
-* Transaction updates
-* Transaction deletion
-* Financial summaries
-
-### 🧠 Intelligent Categorization
-
-FinPilot includes a machine-learning based transaction categorization layer.
-
-```text
-Transaction
-     │
-     ▼
-Text Representation
-     │
-     ▼
-Naive Bayes Classifier
-     │
-     ▼
-Predicted Category
+```sql
+-- run once in psql or pgAdmin
+CREATE DATABASE finpilot;
 ```
 
-### 📥 Statement Import
-
-Financial statements can be imported and processed through the backend statement-import pipeline.
-
-```text
-Statement
-    │
-    ▼
-CSV Processing
-    │
-    ▼
-Validation
-    │
-    ▼
-Transaction Processing
-    │
-    ▼
-Financial Data
-```
-
-### 🎯 Budgets
-
-Users can create and manage budgets and compare financial activity against planned spending.
-
-### 📊 Dashboard
-
-The dashboard brings together financial information including:
-
-* Total balance
-* Income
-* Expenses
-* Savings
-* Monthly trends
-* Budget information
-* Spending categories
-* Recent transactions
-
----
-
-## 🧠 Financial Intelligence
-
-FinPilot goes beyond basic CRUD financial management.
-
-The intelligence layer contains:
-
-```text
-intelligence/
-│
-├── client/
-│   ├── EmbeddingClient
-│   └── OpenAiClient
-│
-├── controller/
-├── dto/
-│
-└── service/
-    ├── FinanceRagService
-    ├── HealthScoreService
-    ├── InsightService
-    └── NarrativeService
-```
-
-This creates a separation between:
-
-```text
-Financial Computation
-        ↓
-Financial Intelligence
-        ↓
-AI Interaction
-```
-
----
-
-## 🔎 Retrieval-Augmented Generation
-
-FinPilot contains a financial RAG service designed to provide financial context to AI interactions.
-
-```text
-User Question
-      │
-      ▼
-Financial Context
-      │
-      ▼
-Relevant Data Retrieval
-      │
-      ▼
-Context Construction
-      │
-      ▼
-LLM
-      │
-      ▼
-Grounded Response
-```
-
----
-
-## ❤️ Financial Health
-
-FinPilot includes a dedicated financial health scoring service.
-
-```text
-Income
-  +
-Expenses
-  +
-Savings
-  +
-Budget Behaviour
-  +
-Financial Patterns
-        │
-        ▼
-Financial Health
-```
-
----
-
-## 💡 Insights & Narratives
-
-FinPilot contains dedicated services for:
-
-* Financial insights
-* Financial narratives
-* Health signals
-* Contextual analysis
-
-These services form the foundation for an AI-native financial experience.
-
----
-
-## 🗄️ Database
-
-FinPilot uses PostgreSQL with Flyway migrations.
-
-Current migration structure:
-
-```text
-V1__create_users_table.sql
-V2__create_refresh_tokens_table.sql
-V3__create_accounts_table.sql
-V4__create_categories_table.sql
-V5__create_transactions_table.sql
-V6__create_budgets_table.sql
-V7__add_transaction_updated_at.sql
-```
-
-Database structure is controlled through Flyway migrations.
-
----
-
-## 📁 Project Structure
-
-```text
-FinPilot/
-│
-├── finpilot-backend/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/
-│   │   │   │   └── com/finpilot/finpilotbackend/
-│   │   │   │       ├── dashboard/
-│   │   │   │       ├── finance/
-│   │   │   │       ├── identity/
-│   │   │   │       ├── intelligence/
-│   │   │   │       ├── planning/
-│   │   │   │       └── platform/
-│   │   │   └── resources/
-│   │   │       ├── application.properties
-│   │   │       └── db/migration/
-│   │   └── test/
-│   └── pom.xml
-│
-├── finpilot-frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── features/
-│   │   │   ├── accounts/
-│   │   │   ├── auth/
-│   │   │   ├── budgets/
-│   │   │   ├── dashboard/
-│   │   │   ├── insights/
-│   │   │   ├── marketing/
-│   │   │   └── transactions/
-│   │   ├── lib/
-│   │   ├── store/
-│   │   └── App.tsx
-│   └── package.json
-│
-├── .gitignore
-└── README.md
-```
-
----
-
-## 🔐 Environment Configuration
-
-Create the required environment variables locally:
-
-```env
-DB_USERNAME=
-DB_PASSWORD=
-
-APP_JWT_SECRET=
-
-OPENAI_API_KEY=
-
-APP_CORS_ALLOWED_ORIGINS=
-```
-
-Never commit real credentials, API keys, JWT secrets, or database passwords.
-
----
-
-## 🛠️ Local Development
-
-### Clone
-
-```bash
-git clone https://github.com/khaddeshivam/FinPilot.git
-cd FinPilot
-```
-
-### Backend
+### 2 — Backend
 
 ```bash
 cd finpilot-backend
+
+# Required environment variables (see .env.example for the full list)
+export APP_JWT_SECRET="replace-with-a-random-string-of-at-least-32-chars"
+export SPRING_DATASOURCE_PASSWORD="your-postgres-password"
+
+# Optional: AI features (narrative + Ask FinPilot)
+# export OPENAI_API_KEY="sk-..."
+
+mvn spring-boot:run
+# API is available at http://localhost:8080
 ```
 
-#### Windows
+Flyway applies the schema automatically on first startup.
 
-```powershell
-.\mvnw.cmd spring-boot:run
-```
-
-#### macOS / Linux
-
-```bash
-./mvnw spring-boot:run
-```
-
-Backend:
-
-```text
-http://localhost:8080
-```
-
-### Frontend
-
-Open another terminal:
+### 3 — Frontend
 
 ```bash
 cd finpilot-frontend
 npm install
 npm run dev
+# App is available at http://localhost:5173
 ```
+
+The Vite dev server proxies `/api/*` to the backend, so no CORS configuration is needed locally.
 
 ---
 
-## 🧪 Testing
-
-The backend contains automated tests covering:
-
-* ML classification
-* Vector mathematics
-* Category prediction
-* Statement importing
-* Transactions
-* Financial RAG
-* Financial health
-* Insights
-* Budgets
-
-### Windows
-
-```powershell
-.\mvnw.cmd test
-```
-
-### macOS / Linux
+## Docker Compose (all-in-one)
 
 ```bash
-./mvnw test
+cp .env.example .env          # fill in the required values
+docker compose up --build
+```
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:5173 |
+| Backend | http://localhost:8080 |
+| PostgreSQL | localhost:5432 |
+
+---
+
+## Environment variables
+
+See `.env.example` for the full annotated list.
+
+| Variable | Required | Secret | Description |
+|---|---|---|---|
+| `APP_JWT_SECRET` | Yes | Yes | JWT signing key — minimum 32 characters |
+| `SPRING_DATASOURCE_PASSWORD` | Yes | Yes | PostgreSQL password |
+| `SPRING_DATASOURCE_URL` | No | No | Defaults to `jdbc:postgresql://localhost:5432/finpilot` |
+| `SPRING_DATASOURCE_USERNAME` | No | No | Defaults to `postgres` |
+| `APP_CORS_ALLOWED_ORIGINS` | Production only | No | Comma-separated frontend origins, e.g. `https://yourapp.com` |
+| `OPENAI_API_KEY` | No | Yes | Enables AI narrative and Ask FinPilot. App starts and runs without it; those endpoints return 503. |
+
+---
+
+## Available scripts
+
+### Backend
+```bash
+mvn test          # run unit tests
+mvn package       # build a production JAR (target/finpilot-backend-*.jar)
+```
+
+### Frontend
+```bash
+npm run dev       # development server
+npm run build     # production build (dist/)
+npm run lint      # oxlint
 ```
 
 ---
 
-## 🔒 Security
+## CSV import format
 
-FinPilot uses:
+The import feature accepts two layouts:
 
-* Spring Security
-* JWT authentication
-* Refresh tokens
-* Protected API endpoints
-* Environment-based secrets
-* Database validation
-* Global exception handling
-
-Sensitive configuration is intentionally externalized from source code.
-
----
-
-## 🗺️ Roadmap
-
-### Current Foundation
-
-* [x] Authentication
-* [x] JWT security
-* [x] Accounts
-* [x] Transactions
-* [x] Categories
-* [x] Statement import
-* [x] Budgets
-* [x] Dashboard
-* [x] ML categorization
-* [x] Financial insights
-* [x] Financial health
-* [x] RAG foundation
-* [x] AI integration
----
-
-## 🎯 Engineering Principles
-
-### Deterministic Financial Logic
-
-Financial calculations should be performed by application logic rather than delegated blindly to an LLM.
-
-### Grounded AI
-
-AI responses should be based on relevant financial context.
-
-### Modular Architecture
-
-Domain responsibilities should remain separated as the application grows.
-
-### Security First
-
-Authentication, authorization, secrets, and financial data access are treated as first-class concerns.
-
-### Explainability
-
-Financial intelligence should help users understand the reasoning behind an insight rather than simply presenting an unexplained result.
-
----
-
-## 📌 Project Status
-
-FinPilot is an actively developed full-stack project exploring the intersection of:
-
-```text
-Financial Software
-        +
-Backend Engineering
-        +
-Machine Learning
-        +
-Retrieval-Augmented Generation
-        +
-Generative AI
-        +
-Modern Web Applications
+**Layout A — signed amount (3 columns)**
+```
+Date,Description,Amount
+2026-08-15,Swiggy order,-350.00
+2026-08-14,Salary credit,85000.00
 ```
 
----
+**Layout B — debit/credit columns (4 columns, common in Indian bank exports)**
+```
+Date,Description,Debit,Credit
+15/08/2026,Swiggy order,350.00,
+14/08/2026,Salary credit,,85000.00
+```
 
-## 👨‍💻 Author
-
-**Shivam Khadde**
-
-Computer Engineering
-Full-Stack Development • Java Backend • AI/GenAI
-
-[GitHub](https://github.com/khaddeshivam)
+Supported date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, `DD-MM-YYYY`. Re-uploading the same file is safe — duplicate rows are skipped automatically.
 
 ---
 
-## ⭐ FinPilot
+## Known limitations
 
-> **From financial data to financial understanding.**
+- **No rate limiting** on auth endpoints in the application layer — add upstream rate limiting (nginx, Cloudflare) before a public deployment.
+- **No PDF import** — CSV only.
+- **No recurring transaction detection** — planned.
+- **Session storage** — the session survives a page refresh within the same tab but is cleared when the tab is closed. httpOnly cookies are the planned next step.
+- **AI cost controls** — no per-user request cap on OpenAI endpoints. Add upstream rate limiting before enabling for many users.
+
+---
+
+## Project structure
+
+```
+finpilot-backend/
+  src/main/java/com/finpilot/finpilotbackend/
+    identity/      auth, users, JWT, refresh tokens
+    finance/       accounts, transactions, categories, CSV import, ML classifier
+    planning/      budgets
+    dashboard/     aggregated dashboard + trend data
+    intelligence/  insights, health score, narrative, RAG
+    platform/      global exception handler
+  src/main/resources/db/migration/   Flyway SQL migrations
+
+finpilot-frontend/
+  src/
+    components/    shared UI components
+    features/      auth, accounts, transactions, budgets, insights, AI, reports, settings
+    lib/           API client, formatters
+    store/         Zustand auth + UI state
+```

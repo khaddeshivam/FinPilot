@@ -72,10 +72,14 @@ class CategoryPredictionServiceTest {
         history.add(transaction("petrol fillup", transportCategory));
 
         when(transactionRepository.findByUserIdOrderByTransactionDateDesc(user.getId())).thenReturn(history);
-        when(categoryService.listForUser(user)).thenReturn(List.of(
+        // Build the list before the outer when() to avoid nested stubbing —
+        // the inner when(response.getId()) calls inside mockCategoryResponse()
+        // must complete before Mockito opens the thenReturn() stub.
+        List<CategoryResponse> categories = List.of(
                 mockCategoryResponse(1L, "Food", CategoryType.EXPENSE),
                 mockCategoryResponse(2L, "Transport", CategoryType.EXPENSE)
-        ));
+        );
+        when(categoryService.listForUser(user)).thenReturn(categories);
 
         Optional<CategoryPredictionResponse> prediction =
                 predictionService.predict(user, "swiggy lunch order", CategoryType.EXPENSE);

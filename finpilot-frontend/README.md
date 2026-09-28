@@ -1,32 +1,65 @@
-# React + TypeScript + Vite
+# FinPilot — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 + TypeScript 6 + Vite 8 single-page application.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 20.19+ or 22.12+
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev        # http://localhost:5173
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+The Vite dev server proxies `/api/*` to `http://localhost:8080` (the Spring Boot backend). Start the backend first.
+
+## Build
+
+```bash
+npm run build      # outputs to dist/
+npm run preview    # preview the production build locally
+```
+
+## Lint
+
+```bash
+npm run lint       # oxlint, 0 errors expected
+```
+
+## Environment
+
+No frontend `.env` variables are required for local development. The API base URL is `/api/v1`, forwarded to the backend by the Vite proxy.
+
+In a containerised or deployed environment the `nginx.conf` reverse proxy handles the `/api/` forwarding — no `VITE_*` variables are needed.
+
+## Structure
+
+```
+src/
+  components/
+    brand/      FlightPathMark SVG
+    finance/    domain-specific display components (charts, transaction rows, etc.)
+    layout/     AppLayout, Sidebar, Topbar, MobileNav, QuickAdd, CommandPalette
+    ui/         generic design-system components (Button, Surface, Skeleton, etc.)
+  features/
+    auth/       login, register, auth API
+    accounts/   accounts page + API
+    transactions/ transactions page + API + TransactionForm
+    budgets/    budgets page + API + BudgetForm
+    insights/   insights + health score page + API
+    ai/         Ask FinPilot page
+    reports/    reports page
+    settings/   settings + logout
+    help/       help page
+    dashboard/  dashboard page + API
+    marketing/  landing page
+  lib/
+    apiClient.ts   axios instance with JWT attach + silent refresh interceptor
+    format.ts      currency, date, and percent formatters
+    categoryMeta.ts  account icon/group helpers
+  store/
+    authStore.ts   Zustand store (sessionStorage-persisted tokens)
+    uiStore.ts     command palette, quick-add, transaction drawer state
+```

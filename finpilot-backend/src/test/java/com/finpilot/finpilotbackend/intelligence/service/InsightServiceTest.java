@@ -50,9 +50,9 @@ class InsightServiceTest {
         // ₹300 -> ₹500 is a 66% increase, well above threshold and above
         // the ₹200 minimum absolute amount.
         when(transactionRepository.sumGroupedByCategory(any(), eq(CategoryType.EXPENSE), eq(LocalDate.of(2026, 8, 1)), any()))
-                .thenReturn(List.of(new Object[]{"Food", BigDecimal.valueOf(500)}));
+                .thenReturn(List.<Object[]>of(new Object[]{"Food", BigDecimal.valueOf(500)}));
         when(transactionRepository.sumGroupedByCategory(any(), eq(CategoryType.EXPENSE), eq(LocalDate.of(2026, 7, 1)), eq(LocalDate.of(2026, 8, 1))))
-                .thenReturn(List.of(new Object[]{"Food", BigDecimal.valueOf(300)}));
+                .thenReturn(List.<Object[]>of(new Object[]{"Food", BigDecimal.valueOf(300)}));
         when(transactionRepository.sumByTypeAndDateRange(any(), any(), any(), any())).thenReturn(BigDecimal.ZERO);
 
         List<InsightResponse> insights = insightService.generateInsights(user, month);
@@ -67,9 +67,9 @@ class InsightServiceTest {
         // ₹10 -> ₹20 is a 100% increase but both amounts are trivially small -
         // this must NOT produce an insight, since it would just be noise.
         when(transactionRepository.sumGroupedByCategory(any(), eq(CategoryType.EXPENSE), eq(LocalDate.of(2026, 8, 1)), any()))
-                .thenReturn(List.of(new Object[]{"Misc", BigDecimal.valueOf(20)}));
+                .thenReturn(List.<Object[]>of(new Object[]{"Misc", BigDecimal.valueOf(20)}));
         when(transactionRepository.sumGroupedByCategory(any(), eq(CategoryType.EXPENSE), eq(LocalDate.of(2026, 7, 1)), eq(LocalDate.of(2026, 8, 1))))
-                .thenReturn(List.of(new Object[]{"Misc", BigDecimal.valueOf(10)}));
+                .thenReturn(List.<Object[]>of(new Object[]{"Misc", BigDecimal.valueOf(10)}));
         when(transactionRepository.sumByTypeAndDateRange(any(), any(), any(), any())).thenReturn(BigDecimal.ZERO);
 
         List<InsightResponse> insights = insightService.generateInsights(user, month);
@@ -83,7 +83,7 @@ class InsightServiceTest {
         // baseline to compare against - must be skipped, not treated as an
         // infinite/false increase.
         when(transactionRepository.sumGroupedByCategory(any(), eq(CategoryType.EXPENSE), eq(LocalDate.of(2026, 8, 1)), any()))
-                .thenReturn(List.of(new Object[]{"Travel", BigDecimal.valueOf(5000)}));
+                .thenReturn(List.<Object[]>of(new Object[]{"Travel", BigDecimal.valueOf(5000)}));
         when(transactionRepository.sumGroupedByCategory(any(), eq(CategoryType.EXPENSE), eq(LocalDate.of(2026, 7, 1)), eq(LocalDate.of(2026, 8, 1))))
                 .thenReturn(List.of()); // nothing last month
         when(transactionRepository.sumByTypeAndDateRange(any(), any(), any(), any())).thenReturn(BigDecimal.ZERO);

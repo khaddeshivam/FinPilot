@@ -2,8 +2,9 @@ package com.finpilot.finpilotbackend.finance.service;
 
 import com.finpilot.finpilotbackend.finance.dto.CategoryResponse;
 import com.finpilot.finpilotbackend.finance.dto.ImportDtos.ImportSummaryResponse;
-import com.finpilot.finpilotbackend.finance.dto.TransactionDtos.TransactionResponse;
 import com.finpilot.finpilotbackend.finance.entity.CategoryType;
+import com.finpilot.finpilotbackend.finance.entity.Transaction;
+import com.finpilot.finpilotbackend.finance.repository.TransactionRepository;
 import com.finpilot.finpilotbackend.identity.entity.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,9 +17,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 // Covers the two things most likely to go wrong in a CSV import: rows that
@@ -33,6 +42,8 @@ class StatementImportServiceTest {
     @Mock
     private TransactionService transactionService;
     @Mock
+    private TransactionRepository transactionRepository;
+    @Mock
     private AccountService accountService;
     @Mock
     private CategoryService categoryService;
@@ -44,19 +55,34 @@ class StatementImportServiceTest {
 
     @BeforeEach
     void setUp() {
-        importService = new StatementImportService(transactionService, accountService, categoryService, categoryPredictionService);
+        importService = new StatementImportService(
+                transactionService, transactionRepository, accountService,
+                categoryService, categoryPredictionService);
         user = new User("user@example.com", "hashed", "Test User");
 
-        when(categoryService.listForUser(user)).thenReturn(List.of(
+        // Build the list BEFORE passing it to when(...), so that the inner
+        // mock(CategoryResponse.class) + when(category.getId()) stubs inside
+        // mockCategory() are fully resolved before Mockito opens the outer stub.
+        // Nesting a when() call inside another when()'s argument causes the
+        // "Unfinished stubbing" error in strict mode.
+        List<CategoryResponse> categories = List.of(
                 mockCategory(1L, "Food", CategoryType.EXPENSE),
                 mockCategory(2L, "Other", CategoryType.EXPENSE),
                 mockCategory(3L, "Salary", CategoryType.INCOME),
                 mockCategory(4L, "Other Income", CategoryType.INCOME)
-        ));
-        when(transactionService.create(any(), any())).thenReturn(mock(TransactionResponse.class));
+        );
+        when(categoryService.listForUser(user)).thenReturn(categories);
+
+        // Stub createImported so imported rows return a Transaction with a description.
+        // lenient() because tests that skip every row (future date, zero amount) never
+        // reach createImported or trainedClassifierFor, and strict mode would flag them
+        // as unnecessary stubs.
+        Transaction stubTx = mock(Transaction.class);
+        lenient().when(stubTx.getDescription()).thenReturn("stub");
+        lenient().when(transactionService.createImported(any(), any(), anyString())).thenReturn(stubTx);
         // No training history yet - forces every row through the keyword
         // fallback path, which is what these tests are actually verifying.
-        when(categoryPredictionService.trainedClassifierFor(any(), any())).thenReturn(Optional.empty());
+        lenient().when(categoryPredictionService.trainedClassifierFor(any(), any())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -125,6 +151,54 @@ class StatementImportServiceTest {
 
         assertThat(summary.getImportedCount()).isEqualTo(2);
         assertThat(summary.getSkippedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void twoIdenticalRowsInOneCsvImportAsTwoSeparateTransactions() {
+        // Two purchases with the same account, date, amount, and description should
+        // both be imported — they are genuinely distinct real-world transactions.
+        // Without the occurrence counter they would share the same fingerprint;
+        // the second row would appear already-imported and be silently dropped.
+        // Capture the fingerprints actually passed to createImported and assert they
+        // are distinct — this proves the occurrence-counter logic produces two
+        // different hashes, not just that two rows happened to get through.
+        String csv = "Date,Description,Amount\n"
+                + "2026-08-01,Chai,-50\n"
+                + "2026-08-01,Chai,-50\n";
+
+        ImportSummaryResponse summary = importService.importCsv(user, 1L, csvFile(csv));
+
+        ArgumentCaptor<String> fingerprints = ArgumentCaptor.forClass(String.class);
+        verify(transactionService, times(2)).createImported(any(), any(), fingerprints.capture());
+        assertThat(fingerprints.getAllValues()).hasSize(2).doesNotHaveDuplicates();
+        assertThat(summary.getImportedCount()).isEqualTo(2);
+        assertThat(summary.getSkippedCount()).isZero();
+    }
+
+    @Test
+    void reImportingTheSameCsvSkipsBothRows() {
+        // Re-uploading a file that was previously imported must skip every row.
+        // Run the import once to learn the exact fingerprints the service produces,
+        // then stub existsByImportFingerprint to return true for those specific values
+        // so the second import sees them as "already in the DB".
+        String csv = "Date,Description,Amount\n"
+                + "2026-08-01,Chai,-50\n"
+                + "2026-08-01,Chai,-50\n";
+
+        // First import: capture the two distinct fingerprints that get stored.
+        importService.importCsv(user, 1L, csvFile(csv));
+        ArgumentCaptor<String> stored = ArgumentCaptor.forClass(String.class);
+        verify(transactionService, times(2)).createImported(any(), any(), stored.capture());
+
+        // Second import: only those exact fingerprints already exist in the DB.
+        stored.getAllValues().forEach(fp ->
+                when(transactionRepository.existsByImportFingerprint(fp)).thenReturn(true));
+        clearInvocations(transactionService);
+
+        ImportSummaryResponse summary = importService.importCsv(user, 1L, csvFile(csv));
+
+        assertThat(summary.getSkippedCount()).isEqualTo(2);
+        verify(transactionService, never()).createImported(any(), any(), anyString());
     }
 
     private MockMultipartFile csvFile(String content) {

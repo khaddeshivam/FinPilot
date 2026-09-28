@@ -26,13 +26,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 // CSV statement import with deduplication, flexible column layouts, and
 // multiple date formats. Design choices:
@@ -139,6 +133,16 @@ public class StatementImportService {
         List<RowResult> results = new ArrayList<>();
         int imported = 0;
         boolean debitCreditLayout = false;
+        // Tracks how many times each base fingerprint has been seen in THIS import
+        // run.  Without this, two genuinely identical rows in the same CSV (e.g.
+        // two ₹50 chai payments on the same day) produce the same SHA-256 hash,
+        // so the second row passes the existsByImportFingerprint check (it isn't
+        // in the DB yet) and then either overwrites or errors at insert time.
+        // The counter suffix makes each occurrence unique while re-uploading the
+        // same file still produces the same set of fingerprints, preserving
+        // idempotency.  First occurrences keep their original (unsuffixed) hash
+        // so existing data remains compatible.
+        Map<String, Integer> fingerprintOccurrences = new HashMap<>();
 
         try (CSVReader reader = new CSVReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
             String[] header = reader.readNext();
@@ -161,7 +165,7 @@ public class StatementImportService {
                 }
 
                 RowResult result = importRow(user, accountId, row, rowNumber, categoryIdLookup,
-                        expenseClassifier, incomeClassifier, debitCreditLayout);
+                        expenseClassifier, incomeClassifier, debitCreditLayout, fingerprintOccurrences);
                 results.add(result);
                 if (result.isImported()) {
                     imported++;
@@ -180,7 +184,8 @@ public class StatementImportService {
             Map<String, Long> categoryIdLookup,
             Optional<NaiveBayesTextClassifier> expenseClassifier,
             Optional<NaiveBayesTextClassifier> incomeClassifier,
-            boolean debitCreditLayout
+            boolean debitCreditLayout,
+            Map<String, Integer> fingerprintOccurrences
     ) {
         try {
             int minColumns = debitCreditLayout ? 4 : 3;
@@ -220,7 +225,20 @@ public class StatementImportService {
             // Deduplication: compute a stable fingerprint for this row and skip if
             // it was already imported. This makes re-uploading the same statement
             // safe - no double-counting, no phantom balance changes.
-            String fingerprint = computeFingerprint(accountId, date, amount, description);
+            //
+            // The occurrence counter handles the case where a single statement
+            // contains two genuinely identical rows (same account, date, amount,
+            // and description).  The n-th occurrence gets a hash of the
+            // base-fingerprint+occurrence-index so each row stores a distinct value
+            // while re-uploading the same file reproduces the exact same set of
+            // fingerprints (idempotency).  n=1 keeps the original hash so that
+            // rows already in the database are unaffected.
+            String baseFingerprint = computeFingerprint(accountId, date, amount, description);
+            int occurrence = fingerprintOccurrences.merge(baseFingerprint, 1, Integer::sum);
+            String fingerprint = occurrence == 1
+                    ? baseFingerprint
+                    : sha256Hex("dup|" + occurrence + "|" + accountId + "|" + date + "|"
+                                + amount.toPlainString() + "|" + description.trim().toLowerCase(Locale.ROOT));
             if (transactionRepository.existsByImportFingerprint(fingerprint)) {
                 return RowResult.skipped(rowNumber, "Already imported (duplicate row skipped)");
             }
@@ -275,14 +293,15 @@ public class StatementImportService {
     // Stripping whitespace/case from the description guards against trivial
     // formatting differences in re-exports of the same underlying data.
     private String computeFingerprint(Long accountId, LocalDate date, BigDecimal amount, String description) {
-        String raw = accountId + "|" + date + "|" + amount.toPlainString() + "|"
-                + description.trim().toLowerCase();
+        return sha256Hex(accountId + "|" + date + "|" + amount.toPlainString() + "|"
+                + description.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private String sha256Hex(String raw) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
+            return HexFormat.of().formatHex(digest.digest(raw.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is mandated by the JVM spec; this can never happen.
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }

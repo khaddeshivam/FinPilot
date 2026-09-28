@@ -37,4 +37,13 @@ public class AuthController {
         AuthResponse response = authService.refresh(request.getRefreshToken());
         return ResponseEntity.ok(response);
     }
+
+    // Revokes the refresh token server-side so it can never be replayed.
+    // Returns 204 No Content regardless of whether the token was found -
+    // the caller's goal (end the session) is achieved either way.
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest request) {
+        authService.logout(request.getRefreshToken());
+        return ResponseEntity.noContent().build();
+    }
 }

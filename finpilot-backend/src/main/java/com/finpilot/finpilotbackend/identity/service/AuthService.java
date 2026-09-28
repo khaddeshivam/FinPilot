@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.Locale;
 
 @Service
 public class AuthService {
@@ -46,7 +47,9 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         // Normalise email on login to match the normalised value stored at
         // registration - so "User@example.com" finds the same account as "user@example.com".
-        String email = request.getEmail().trim().toLowerCase();
+        // Locale.ROOT prevents the Turkish-locale dotless-i problem (same fix
+        // as UserService.register) so login always finds the normalised address.
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
         User user = userRepository.findByEmail(email)
                 .orElseThrow(InvalidCredentialsException::new);
 
@@ -58,6 +61,17 @@ public class AuthService {
         RefreshToken refreshToken = issueRefreshToken(user);
 
         return new AuthResponse(accessToken, refreshToken.getToken());
+    }
+
+    // Revoke the supplied refresh token so it can never be replayed.
+    // Best-effort: if the token doesn't exist we still succeed silently -
+    // the client-side session is gone either way.
+    @Transactional
+    public void logout(String rawRefreshToken) {
+        refreshTokenRepository.findByToken(rawRefreshToken).ifPresent(token -> {
+            token.setRevoked(true);
+            refreshTokenRepository.save(token);
+        });
     }
 
     @Transactional
