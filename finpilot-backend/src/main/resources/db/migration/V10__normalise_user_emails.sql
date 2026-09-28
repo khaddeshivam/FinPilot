@@ -1,3 +1,11 @@
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM users GROUP BY lower(email) HAVING count(*) > 1) THEN
+    RAISE EXCEPTION 'V10 aborted: accounts differ only by email case. Fix them manually first.';
+  END IF;
+END $$;
+
+
 -- Normalise all existing email addresses to lower-case so that:
 --   1. Legacy rows stored with mixed case (e.g. "User@example.com") are found
 --      by the new Locale.ROOT toLowerCase() lookup in UserService and AuthService.

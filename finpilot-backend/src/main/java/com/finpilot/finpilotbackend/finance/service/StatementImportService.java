@@ -26,14 +26,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 // CSV statement import with deduplication, flexible column layouts, and
 // multiple date formats. Design choices:
@@ -244,7 +237,8 @@ public class StatementImportService {
             int occurrence = fingerprintOccurrences.merge(baseFingerprint, 1, Integer::sum);
             String fingerprint = occurrence == 1
                     ? baseFingerprint
-                    : computeFingerprint(accountId, date, amount, description + "#" + occurrence);
+                    : sha256Hex("dup|" + occurrence + "|" + accountId + "|" + date + "|"
+                                + amount.toPlainString() + "|" + description.trim().toLowerCase(Locale.ROOT));
             if (transactionRepository.existsByImportFingerprint(fingerprint)) {
                 return RowResult.skipped(rowNumber, "Already imported (duplicate row skipped)");
             }
@@ -299,14 +293,15 @@ public class StatementImportService {
     // Stripping whitespace/case from the description guards against trivial
     // formatting differences in re-exports of the same underlying data.
     private String computeFingerprint(Long accountId, LocalDate date, BigDecimal amount, String description) {
-        String raw = accountId + "|" + date + "|" + amount.toPlainString() + "|"
-                + description.trim().toLowerCase();
+        return sha256Hex(accountId + "|" + date + "|" + amount.toPlainString() + "|"
+                + description.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private String sha256Hex(String raw) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
+            return HexFormat.of().formatHex(digest.digest(raw.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is mandated by the JVM spec; this can never happen.
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }

@@ -20,6 +20,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -53,19 +54,29 @@ class StatementImportServiceTest {
                 categoryService, categoryPredictionService);
         user = new User("user@example.com", "hashed", "Test User");
 
-        when(categoryService.listForUser(user)).thenReturn(List.of(
+        // Build the list BEFORE passing it to when(...), so that the inner
+        // mock(CategoryResponse.class) + when(category.getId()) stubs inside
+        // mockCategory() are fully resolved before Mockito opens the outer stub.
+        // Nesting a when() call inside another when()'s argument causes the
+        // "Unfinished stubbing" error in strict mode.
+        List<CategoryResponse> categories = List.of(
                 mockCategory(1L, "Food", CategoryType.EXPENSE),
                 mockCategory(2L, "Other", CategoryType.EXPENSE),
                 mockCategory(3L, "Salary", CategoryType.INCOME),
                 mockCategory(4L, "Other Income", CategoryType.INCOME)
-        ));
+        );
+        when(categoryService.listForUser(user)).thenReturn(categories);
+
         // Stub createImported so imported rows return a Transaction with a description.
+        // lenient() because tests that skip every row (future date, zero amount) never
+        // reach createImported or trainedClassifierFor, and strict mode would flag them
+        // as unnecessary stubs.
         Transaction stubTx = mock(Transaction.class);
-        when(stubTx.getDescription()).thenReturn("stub");
-        when(transactionService.createImported(any(), any(), anyString())).thenReturn(stubTx);
+        lenient().when(stubTx.getDescription()).thenReturn("stub");
+        lenient().when(transactionService.createImported(any(), any(), anyString())).thenReturn(stubTx);
         // No training history yet - forces every row through the keyword
         // fallback path, which is what these tests are actually verifying.
-        when(categoryPredictionService.trainedClassifierFor(any(), any())).thenReturn(Optional.empty());
+        lenient().when(categoryPredictionService.trainedClassifierFor(any(), any())).thenReturn(Optional.empty());
     }
 
     @Test

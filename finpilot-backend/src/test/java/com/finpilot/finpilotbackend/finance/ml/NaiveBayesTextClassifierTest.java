@@ -88,9 +88,12 @@ class NaiveBayesTextClassifierTest {
     @Test
     void trainingDocumentCountTracksTotalExamplesSeen() {
         NaiveBayesTextClassifier classifier = new NaiveBayesTextClassifier();
-        classifier.train("a", "X");
-        classifier.train("b", "Y");
-        classifier.train("c", "X");
+        // Single-character tokens are filtered out by MIN_TOKEN_LENGTH = 2,
+        // so "a"/"b"/"c" produce zero tokens and train() returns early without
+        // incrementing totalDocuments. Use words of >= 2 chars instead.
+        classifier.train("apple", "X");
+        classifier.train("banana", "Y");
+        classifier.train("cherry", "X");
 
         assertThat(classifier.trainingDocumentCount()).isEqualTo(3);
     }
