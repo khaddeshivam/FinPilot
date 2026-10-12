@@ -18,6 +18,7 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Locale;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -58,55 +59,63 @@ public class AuthService {
         }
 
         String accessToken = jwtService.generateAccessToken(user);
-        RefreshToken refreshToken = issueRefreshToken(user);
+        // A login starts a new token family; every rotation of this session's
+        // refresh token will inherit it.
+        RefreshToken refreshToken = issueRefreshToken(user, UUID.randomUUID());
 
         return new AuthResponse(accessToken, refreshToken.getToken());
     }
 
-    // Revoke the supplied refresh token so it can never be replayed.
-    // Best-effort: if the token doesn't exist we still succeed silently -
-    // the client-side session is gone either way.
+    // Revokes the WHOLE family of the supplied token, not just the token itself.
+    // Rotation means the presented token is usually the newest one, but older
+    // ones in the chain (or a copy an attacker rotated first) must die too.
+    // Best-effort: an unknown token still succeeds silently - the client-side
+    // session is gone either way.
     @Transactional
     public void logout(String rawRefreshToken) {
-        refreshTokenRepository.findByToken(rawRefreshToken).ifPresent(token -> {
-            token.setRevoked(true);
-            refreshTokenRepository.save(token);
-        });
+        refreshTokenRepository.findByToken(rawRefreshToken)
+                .ifPresent(token -> refreshTokenRepository.revokeFamily(token.getFamilyId()));
     }
 
-    @Transactional
+    // noRollbackFor is load-bearing: on reuse detection we revoke the family and
+    // THEN throw. Without it, Spring would roll the transaction back on the
+    // exception and silently undo the revocation we just made.
+    @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
     public AuthResponse refresh(String rawRefreshToken) {
-        RefreshToken existing = refreshTokenRepository.findByToken(rawRefreshToken)
+        // Row lock: concurrent refreshes of the same token are serialised.
+        RefreshToken existing = refreshTokenRepository.findByTokenForUpdate(rawRefreshToken)
                 .orElseThrow(() -> new InvalidRefreshTokenException("Refresh token not found"));
 
         if (existing.isRevoked()) {
+            // A rotated-out (or logged-out) token is being presented again.
+            // Either the legitimate client or an attacker holds a stale copy and
+            // we cannot tell which, so kill the whole session. The legitimate
+            // user simply logs in again; an attacker loses access.
+            refreshTokenRepository.revokeFamily(existing.getFamilyId());
             throw new InvalidRefreshTokenException("Refresh token has been revoked");
         }
         if (existing.isExpired()) {
             throw new InvalidRefreshTokenException("Refresh token has expired");
         }
 
-        // Rotate: revoke the used token, issue a new one.
-        // This means a stolen-and-reused refresh token gets invalidated on the
-        // legitimate user's next real refresh - a stronger posture than letting
-        // the same refresh token be reused indefinitely.
+        // Rotate: revoke the used token, issue a successor in the same family.
         existing.setRevoked(true);
         refreshTokenRepository.save(existing);
 
         User user = existing.getUser();
         String newAccessToken = jwtService.generateAccessToken(user);
-        RefreshToken newRefreshToken = issueRefreshToken(user);
+        RefreshToken newRefreshToken = issueRefreshToken(user, existing.getFamilyId());
 
         return new AuthResponse(newAccessToken, newRefreshToken.getToken());
     }
 
-    private RefreshToken issueRefreshToken(User user) {
+    private RefreshToken issueRefreshToken(User user, UUID familyId) {
         byte[] randomBytes = new byte[64];
         secureRandom.nextBytes(randomBytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
 
         LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(refreshTokenExpirationMs / 1000);
-        RefreshToken refreshToken = new RefreshToken(user, token, expiresAt);
+        RefreshToken refreshToken = new RefreshToken(user, token, expiresAt, familyId);
         return refreshTokenRepository.save(refreshToken);
     }
 }
