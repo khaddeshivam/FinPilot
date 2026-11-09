@@ -1,5 +1,6 @@
+import axios, { isAxiosError } from 'axios';
 import { apiClient } from '../../../lib/apiClient';
-
+import { API_BASE_URL } from '../../../lib/apiConfig';
 // These types mirror the backend's RegisterRequest/LoginRequest/AuthResponse/
 // UserResponse DTOs exactly (identity/dto/*.java) - keeping them in sync by
 // hand for now; codegen from the OpenAPI spec is a reasonable upgrade later.
@@ -43,13 +44,48 @@ export async function getCurrentUser(): Promise<UserResponse> {
   return response.data;
 }
 
+// True only when the server looked at the refresh token and rejected it
+// (invalid, expired or revoked). Only this should end the session; any other
+// failure (500, 502/503/504, timeout, network error) is transient.
+export function isRefreshRejection(error: unknown): boolean {
+  if (!isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return status === 400 || status === 401 || status === 403;
+}
+
+// A sleeping backend can take over two minutes to answer, so allow for that.
+const REFRESH_TIMEOUT_MS = 180_000;
+
+// Retry only when the server answered with a 5xx: the refresh is rolled back
+// then, so the token is still usable. Timeouts and network errors are not
+// retried, because the server may already have rotated the token and a retry
+// would present one that is no longer valid.
+const RETRY_DELAYS_MS = [3_000, 8_000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Called by the axios interceptor to silently swap a new access token.
 // Uses a plain axios instance (not apiClient) so the interceptor can't
-// accidentally intercept its own refresh call.
+// accidentally intercept its own refresh call. It uses the same base URL as
+// apiClient, so refresh goes to the same backend as every other request.
 export async function refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
-  const { default: axios } = await import('axios');
-  const response = await axios.post<AuthResponse>('/api/v1/auth/refresh', { refreshToken });
-  return response.data;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await axios.post<AuthResponse>(
+          `${API_BASE_URL}/auth/refresh`,
+          { refreshToken },
+          { timeout: REFRESH_TIMEOUT_MS },
+      );
+      return response.data;
+    } catch (error) {
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      const retryable = status !== undefined && status >= 500;
+      if (!retryable || attempt >= RETRY_DELAYS_MS.length) throw error;
+      await sleep(RETRY_DELAYS_MS[attempt] ?? 0);
+    }
+  }
 }
 
 export async function logout(refreshToken: string): Promise<void> {
