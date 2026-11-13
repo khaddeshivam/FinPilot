@@ -6,6 +6,7 @@ import com.finpilot.finpilotbackend.finance.exception.StatementImportException;
 import com.finpilot.finpilotbackend.identity.exception.EmailAlreadyExistsException;
 import com.finpilot.finpilotbackend.identity.exception.InvalidCredentialsException;
 import com.finpilot.finpilotbackend.identity.exception.InvalidRefreshTokenException;
+import com.finpilot.finpilotbackend.identity.exception.RateLimitExceededException;
 import com.finpilot.finpilotbackend.intelligence.exception.AiNotConfiguredException;
 import com.finpilot.finpilotbackend.intelligence.exception.AiServiceException;
 import com.finpilot.finpilotbackend.planning.exception.InvalidBudgetException;
@@ -63,6 +64,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidRefreshTokenException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
         return errorResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage());
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleRateLimit(RateLimitExceededException ex) {
+        return errorResponse(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", ex.getMessage());
     }
 
     @ExceptionHandler(InvalidBudgetException.class)
