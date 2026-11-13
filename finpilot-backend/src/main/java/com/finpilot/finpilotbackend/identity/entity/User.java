@@ -26,6 +26,12 @@ public class User implements UserDetails {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
+    @Column(name = "google_subject", unique = true)
+    private String googleSubject;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -79,6 +85,11 @@ public class User implements UserDetails {
     public void setFullName(String fullName) {
         this.fullName = fullName;
     }
+
+    public boolean isEmailVerified() { return emailVerified; }
+    public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
+    public String getGoogleSubject() { return googleSubject; }
+    public void setGoogleSubject(String googleSubject) { this.googleSubject = googleSubject; }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;

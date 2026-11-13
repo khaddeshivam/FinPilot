@@ -1,6 +1,7 @@
 package com.finpilot.finpilotbackend.identity.config;
 
 import com.finpilot.finpilotbackend.identity.security.JwtAuthenticationFilter;
+import com.finpilot.finpilotbackend.identity.security.GoogleOAuthSuccessHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,14 +32,17 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
     private final List<String> allowedOrigins;
+    private final GoogleOAuthSuccessHandler googleOAuthSuccessHandler;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
             UserDetailsService userDetailsService,
+            GoogleOAuthSuccessHandler googleOAuthSuccessHandler,
             @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5174}") String allowedOrigins
     ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
+        this.googleOAuthSuccessHandler = googleOAuthSuccessHandler;
         this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
@@ -69,7 +73,7 @@ public class SecurityConfig {
                 // Stateless JWT API - no CSRF tokens needed since we're not using cookies/sessions
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .anyRequest().authenticated()
@@ -80,6 +84,7 @@ public class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .authenticationProvider(authenticationProvider())
+                .oauth2Login(oauth -> oauth.successHandler(googleOAuthSuccessHandler))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
