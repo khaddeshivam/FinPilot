@@ -1,57 +1,78 @@
-import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import LandingNav from '../../../components/layout/LandingNav';
-import FinPilotSignatureFooter from '../components/FinPilotSignatureFooter';
+import { ArrowUpRight, BarChart3, Check, ChevronRight, Globe2, Menu, ShieldCheck, Sparkles, WalletCards, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import './LandingPage.css';
+import binderClip from '../../../assets/figma/floating-red-binder-clip.png';
+import banknotes from '../../../assets/figma/floating-banknotes.png';
+import briefcase from '../../../assets/figma/floating-leather-briefcase.png';
+import rolledBanknote from '../../../assets/figma/floating-rolled-banknote.png';
+import paymentToken from '../../../assets/figma/floating-mint-payment-token.png';
 
-type Preview = 'Overview' | 'Cash flow' | 'Goals';
+const navigation = [['Platform', 'workspace'], ['Solutions', 'solutions'], ['Why FinPilot', 'why-finpilot'], ['Resources', 'resources']] as const;
+const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-const questions = [
-  ['Where did my spending change?', 'Dining is up 18% this month.', 'Three more dinners out than your normal rhythm, mostly on weekends.'],
-  ['Can I save a little more?', 'A ₹4,800 monthly transfer is within reach.', 'Core spending has stayed stable for four consecutive months.'],
-  ['What needs my attention?', 'Your transport budget is nearly spent.', 'A few unplanned rides moved the category closer to its limit than usual.'],
-] as const;
+function useLandingMotion() {
+  const [activeSection, setActiveSection] = useState('workspace');
+  const [hasScrolled, setHasScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const pageRef = useRef<HTMLElement>(null);
 
-function Brand() {
-  return <span className="fp-brand"><i aria-hidden="true"><b /></i>finpilot</span>;
+  useEffect(() => {
+    let frame = 0;
+    const updateProgress = () => {
+      frame = 0;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      pageRef.current?.style.setProperty('--fpl-reading-progress', `${max > 0 ? (window.scrollY / max) * 100 : 0}%`);
+      setHasScrolled(window.scrollY > 12);
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(updateProgress); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    updateProgress();
+    return () => { window.removeEventListener('scroll', onScroll); if (frame) cancelAnimationFrame(frame); };
+  }, []);
+
+  useEffect(() => {
+    const sections = [...document.querySelectorAll<HTMLElement>('[data-landing-section]')];
+    const revealObserver = new IntersectionObserver((entries) => entries.forEach(({ target, isIntersecting }) => {
+      if (isIntersecting) { target.classList.add('is-revealed'); revealObserver.unobserve(target); }
+    }), { threshold: 0.12, rootMargin: '0px 0px -8%' });
+    const navigationObserver = new IntersectionObserver((entries) => entries.forEach(({ target, isIntersecting }) => {
+      if (isIntersecting) setActiveSection((target as HTMLElement).id);
+    }), { threshold: 0.35, rootMargin: '-18% 0px -55%' });
+    sections.forEach((section) => { revealObserver.observe(section); navigationObserver.observe(section); });
+    return () => { revealObserver.disconnect(); navigationObserver.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  return { activeSection, hasScrolled, menuOpen, pageRef, setMenuOpen };
 }
 
-function Button({ children, to, onClick }: { children: React.ReactNode; to?: string; onClick?: () => void }) {
-  const className = 'fp-button';
-  return to ? <Link className={className} to={to}>{children} <span>→</span></Link> : <button className={className} onClick={onClick}>{children}</button>;
+function WorkspacePreview() {
+  return <div className="fpl-workspace" aria-label="Preview of the FinPilot workspace">
+    <aside className="fpl-workspace-nav"><b>finpilot</b><button className="fpl-agency">Shivam's workspace <ChevronRight size={13} /></button>{['Overview', 'Accounts', 'Transactions', 'Budgets', 'Insights'].map((item, index) => <span className={index === 0 ? 'active' : ''} key={item}>{item}</span>)}<small>Settings & support</small></aside>
+    <div className="fpl-workspace-body"><div className="fpl-workspace-top"><span>Workspace / Overview</span><button>Make a payment <ArrowUpRight size={13} /></button></div><h3>Your money. In good hands.</h3><p>A little less admin. A lot more possibility.</p><div className="fpl-metrics"><article className="primary"><span>Available balance</span><strong>₹1,24,850</strong><small>INR</small></article><article><span>This month’s spending</span><strong>₹42,600</strong><small>On track</small></article><article><span>Income this month</span><strong>₹68,240</strong><small>4 payments received</small></article></div><div className="fpl-workspace-lower"><article className="fpl-transactions"><header><b>Recent transactions</b><span>View all <ArrowUpRight size={12} /></span></header>{[['Atlas Talent Ltd', 'Invoice paid', '+ ₹12,500'], ['June contractor payroll', 'Completed', '− ₹42,600'], ['Harbor Partners', 'Invoice paid', '+ ₹8,750']].map(([name, state, amount]) => <div key={name}><b>{name}</b><span>{state}</span><strong>{amount}</strong></div>)}</article><article className="fpl-spending"><span>Spending by category</span><strong>₹42,600</strong><div><i /><i /><i /><i /><i /><i /></div><small>Keep an eye on Food & dining</small></article></div></div>
+  </div>;
 }
 
 export default function LandingPage() {
-  const [preview, setPreview] = useState<Preview>('Overview');
-  const [flow, setFlow] = useState(0);
-  const [question, setQuestion] = useState(0);
-  const [contribution, setContribution] = useState(4800);
-  const [approved, setApproved] = useState(false);
-  const months = Math.ceil(84000 / contribution);
-  const finish = useMemo(() => { const date = new Date(); date.setMonth(date.getMonth() + months); return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }); }, [months]);
-  const scroll = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); };
-  const bars = preview === 'Overview' ? [40, 58, 48, 73, 62, 89, 78] : preview === 'Cash flow' ? [68, 51, 81, 55, 76, 62, 91] : [32, 42, 49, 58, 67, 75, 84];
-  const stat = preview === 'Overview' ? ['Your financial pulse', '₹2,84,600', '+₹12,480 this month'] : preview === 'Cash flow' ? ['Cash flow', '₹18,240', 'Available after essentials'] : ['Home fund', '₹78,000', '48% of your target'];
-
-  return <main className="fp-shell" id="top">
-    <div className="fp-grid" aria-hidden="true" />
-    <LandingNav />
-
-    <section className="fp-hero"><div className="fp-copy"><p className="fp-label">01 <span /> Financial intelligence, made human</p><h1>Know what your<br />money is <em>saying.</em></h1><p className="fp-description">FinPilot turns financial data into clear context, considered recommendations, and decisions you stay in control of.</p><div className="fp-cta"><Button to="/register">Try FinPilot</Button><button onClick={() => scroll('product')}>See how it thinks ↓</button></div><small>● Built for decisions, not just dashboards.</small></div>
-      <div className="fp-orbit"><i /><i /><span className="fp-signal">signal ·</span><span className="fp-context">· context</span><div className="fp-signal-card"><div className="fp-card-title"><Brand /><span>● LIVE SIGNAL</span></div><p>THIS MONTH, SO FAR</p><strong>₹12,480</strong><b>↗ 16.4% more than usual</b><svg viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 62C20 48 30 70 49 52S78 61 95 41s28 12 46-8 26 13 45-9 30 6 48-14 34 8 66-6" /><path d="M0 71C20 57 30 75 52 60s29 7 46-11 27 7 46-12 29 8 47-11 31 4 48-16 33 4 61-6" /></svg><div className="fp-notice">✦ <span><b>A gentle signal:</b> Your usual surplus is growing. There may be room to put some of it to work.</span></div></div></div>
-    </section>
-
-    <section className="fp-section" id="product"><div className="fp-heading"><p className="fp-label">02 <span /> A calmer way to see money</p><h2>Everything you need.<br /><em>Nothing you don’t.</em></h2><p>One clear surface for the signals that deserve your attention.</p></div><div className="fp-preview"><div className="fp-tabs" role="tablist">{(['Overview', 'Cash flow', 'Goals'] as Preview[]).map((name) => <button key={name} role="tab" aria-selected={name === preview} onClick={() => setPreview(name)}>{name}</button>)}</div><div className="fp-screen"><aside><Brand /><span className="active">Overview</span><span>Accounts</span><span>Activity</span><span>Planning</span></aside><div className="fp-screen-main"><div className="fp-welcome"><div><p>Good morning, Shivam</p><h3>{stat[0]}</h3></div><small>Sep 2026</small></div><div className="fp-value"><p>NET POSITION</p><strong>{stat[1]}</strong><b>{stat[2]}</b><div className="fp-bars">{bars.map((height, i) => <i key={i} style={{ height: `${height}%` }} />)}</div></div><div className="fp-small-cards"><div><p>SPENDING SIGNAL</p><b>Dining out <em>↑ 18%</em></b><small>Worth noticing, not worrying about.</small></div><div><p>UPCOMING</p><b>Rent · 3 days</b><small>₹18,000 · already planned</small></div></div></div></div></div></section>
-
-    <section className="fp-section fp-story" id="how"><div><p className="fp-label">03 <span /> The intelligence layer</p><h2>From a number to<br />a <em>next move.</em></h2><p>FinPilot does not just report what happened. It helps make sense of what changed, why it matters, and what you might consider next.</p></div><div className="fp-flow">{[['Signal', 'Your monthly surplus has risen for four months.'], ['Context', 'Your core spending stayed stable while income grew.'], ['Recommendation', 'Consider moving ₹4,800 toward your home fund.']].map(([title, text], index) => <button className={flow === index ? 'selected' : ''} onClick={() => setFlow(index)} key={title}><span>0{index + 1}</span><div><h3>{title}</h3><p>{text}</p><small>{index === 0 ? 'A pattern worth seeing.' : index === 1 ? 'The reason behind the number.' : 'A useful next step, never an order.'}</small></div><b>{index === 2 ? '✓' : '→'}</b></button>)}</div><div className="fp-human"><span>Human approval is the final step.</span><b>Nothing moves until you say yes.</b></div></section>
-
-    <section className="fp-section fp-spending"><div><p className="fp-label">04 <span /> See the pattern</p><h2>Spending is more than<br />a list of <em>transactions.</em></h2><p>FinPilot groups the noise into rhythms you can understand: what is changing, what is recurring, and what can wait.</p><Button to="/register">Explore your patterns</Button></div><div className="fp-category"><div><p>CATEGORY RHYTHM</p><small>This month</small></div><h3>Food & dining</h3><div className="fp-donut"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="48" /><circle className="value" cx="60" cy="60" r="48" /></svg><b>₹8,240<small>of ₹10,000</small></b></div><p className="fp-row"><span><i /> Groceries</span><b>₹4,120</b></p><p className="fp-row"><span><i /> Eating out</span><b>₹4,120</b></p><div className="fp-notice">✦ <span>You are spending in line with last month—apart from a few more restaurant visits.</span></div></div></section>
-
-    <section className="fp-section fp-dark" id="simulator"><div><p className="fp-label">05 <span /> Make the future tangible</p><h2>Small moves.<br /><em>Real momentum.</em></h2><p>Try a contribution amount and see the difference a steady rhythm can make.</p></div><div className="fp-simulator"><div><p>HOME FUND</p><b>₹78,000 <small>saved so far</small></b></div><label htmlFor="contribution">Monthly contribution <strong>₹{contribution.toLocaleString('en-IN')}</strong></label><input id="contribution" type="range" min="2000" max="12000" step="200" value={contribution} onChange={(event) => setContribution(Number(event.target.value))} /><article><p>You could reach your target by</p><strong>{finish}</strong><small>At this pace, your ₹1,62,000 goal is {months} months away.</small></article><div className="fp-timeline"><i /><i /><i /><i /><i /><b style={{ left: `${Math.min(95, 12 + (contribution - 2000) / 120)}%` }} /></div><small className="fp-disclaimer">This is a planning illustration, not financial advice.</small></div></section>
-
-    <section className="fp-section fp-ask"><div><p className="fp-label">06 <span /> Ask in plain language</p><h2>Your financial life,<br /><em>in conversation.</em></h2><p>Start with the question on your mind. FinPilot connects the answer to its underlying information, so reasoning stays visible.</p></div><div className="fp-ask-card"><header>✦ <div><b>Ask FinPilot</b><small>GROUNDED IN YOUR DATA</small></div></header><div className="fp-questions">{questions.map(([prompt], index) => <button className={question === index ? 'selected' : ''} key={prompt} onClick={() => setQuestion(index)}>{prompt}</button>)}</div><article><p>FINPILOT’S READ</p><h3>{questions[question][1]}</h3><span>{questions[question][2]}</span><div><small>Grounded in your trends</small><small>Reasoning stays visible</small><small>No automatic action</small></div></article></div></section>
-
-    <section className="fp-section fp-approval"><div><p className="fp-label">07 <span /> The human in the loop</p><h2>Good advice waits<br />for a <em>yes.</em></h2><p>FinPilot can prepare the next step. You decide whether it belongs in your life.</p></div><div className="fp-approval-card"><header><small>RECOMMENDATION READY</small><b className={approved ? 'approved' : ''}>● {approved ? 'approved' : 'awaiting approval'}</b></header><div className="fp-recommend"><i>↗</i><div><h3>Move ₹4,800 to your home fund</h3><p>Scheduled after your fixed outgoings</p></div><strong>₹4,800<small>one-time transfer</small></strong></div><p className="fp-reason">This amount has appeared as surplus for four consecutive months. Keeping your existing cash buffer intact leaves room for the unexpected.</p><footer>{approved ? <b className="fp-confirm">✓ Approved and ready when you are.</b> : <><Button onClick={() => setApproved(true)}>Approve recommendation ✓</Button><button className="fp-outline">Review details</button></>}</footer></div></section>
-
-    <FinPilotSignatureFooter />
+  const { activeSection, hasScrolled, menuOpen, pageRef, setMenuOpen } = useLandingMotion();
+  const onHeroPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'touch' || !window.matchMedia('(pointer: fine)').matches) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty('--fpl-pointer-x', `${((event.clientX - bounds.left) / bounds.width - .5) * 2}`);
+    event.currentTarget.style.setProperty('--fpl-pointer-y', `${((event.clientY - bounds.top) / bounds.height - .5) * 2}`);
+  };
+  return <main className="fpl-page" ref={pageRef}><div className="fpl-reading-progress" aria-hidden="true" /><header className={`fpl-header ${hasScrolled ? 'is-scrolled' : ''}`}><nav className="fpl-nav" aria-label="Main navigation"><Link to="/" className="fpl-logo">finpilot<span>°</span></Link><div className="fpl-links">{navigation.map(([label, id]) => <button key={id} className={activeSection === id ? 'is-active' : ''} aria-current={activeSection === id ? 'page' : undefined} onClick={() => scrollTo(id)}>{label}</button>)}</div><div className="fpl-actions"><Link to="/login">Log in</Link><Link to="/register" className="fpl-lime-button">Get started <ArrowUpRight size={15} /></Link></div><button className="fpl-menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={menuOpen}>{menuOpen ? <X /> : <Menu />}</button></nav>{menuOpen && <div className="fpl-mobile-menu">{navigation.map(([label, id]) => <button key={id} className={activeSection === id ? 'is-active' : ''} onClick={() => { scrollTo(id); setMenuOpen(false); }}>{label}</button>)}<Link to="/login">Log in</Link><Link to="/register" className="fpl-lime-button">Get started <ArrowUpRight size={15} /></Link></div>}</header>
+    <section className="fpl-hero" onPointerMove={onHeroPointerMove} onPointerLeave={(event) => { event.currentTarget.style.setProperty('--fpl-pointer-x', '0'); event.currentTarget.style.setProperty('--fpl-pointer-y', '0'); }}><img className="fpl-float fpl-clip" src={binderClip} alt="" fetchPriority="high" /><img className="fpl-float fpl-cash" src={banknotes} alt="" loading="lazy" /><img className="fpl-float fpl-case" src={briefcase} alt="" loading="lazy" /><img className="fpl-float fpl-roll" src={rolledBanknote} alt="" loading="lazy" /><img className="fpl-float fpl-token" src={paymentToken} alt="" loading="lazy" /><div className="fpl-hero-content"><div className="fpl-eyebrow"><i /> FINANCIAL CLARITY, BUILT FOR YOU</div><h1><em>Great with life.</em><br />Now great with money.</h1><p>See every rupee. Understand the full picture. Make your next move with a calmer, more connected workspace.</p><Link to="/register" className="fpl-lime-button fpl-hero-cta">Get started for free <ArrowUpRight size={16} /></Link><small>No credit card required <b>·</b> Set up in minutes</small></div><button className="fpl-scroll-cue" onClick={() => scrollTo('workspace')} aria-label="Scroll to the FinPilot workspace preview"><span /></button></section>
+    <section id="workspace" data-landing-section className="fpl-showcase fpl-reveal"><div className="fpl-section-kicker"><span>YOUR NEXT CHAPTER. A CLEARER VIEW.</span><span>01 / THE FINPILOT WORKSPACE</span></div><WorkspacePreview /><p className="fpl-preview-note">Illustrative product preview — figures are sample data, not customer financial information.</p></section>
+    <section id="solutions" data-landing-section className="fpl-split fpl-split-soft fpl-reveal"><div><p className="fpl-overline">ONE WORKSPACE. EVERY ANGLE.</p><h2>More than a dashboard.<br /><em>A better point of view.</em></h2><p className="fpl-body-copy">Connect your accounts, spending, budgets, and financial questions in one place. FinPilot makes the details feel lighter, so you can focus on what is ahead.</p><Link to="/register" className="fpl-text-link">Explore your workspace <ArrowUpRight size={16} /></Link></div><div className="fpl-feature-grid">{[[WalletCards, 'Everything in one place', 'Accounts, balances, and everyday movement — all together.'], [BarChart3, 'See what changed', 'Clear trends turn activity into something useful.'], [Sparkles, 'Understand the why', 'Thoughtful insights built around your real life.'], [Globe2, 'Plan the next move', 'A clearer route from today to your next goal.']].map(([Icon, title, text]) => { const FeatureIcon = Icon as typeof WalletCards; return <article key={title as string}><FeatureIcon size={23} /><h3>{title as string}</h3><p>{text as string}</p><ArrowUpRight className="fpl-card-arrow" size={16} aria-hidden="true" /></article>; })}</div></section>
+    <section id="why-finpilot" data-landing-section className="fpl-why fpl-reveal"><div className="fpl-why-copy"><p className="fpl-overline">A LITTLE LESS ADMIN. A LOT MORE POSSIBILITY.</p><h2>Money works better<br />when it feels <em>human.</em></h2><p className="fpl-body-copy">FinPilot is designed to give you the context behind every number, and the confidence to decide what comes next.</p></div><div className="fpl-steps">{[['01', 'Connect your world', 'Bring your accounts, transactions, and plans together.'], ['02', 'See the whole picture', 'Know where you stand, without stitching together spreadsheets.'], ['03', 'Move with confidence', 'Use clear context to make a considered next move.']].map(([number, title, text]) => <article key={number}><span>{number}</span><div><h3>{title}</h3><p>{text}</p></div><Check size={19} /></article>)}</div></section>
+    <section id="resources" data-landing-section className="fpl-resources fpl-reveal"><div><p className="fpl-overline">BUILT TO EARN YOUR TRUST.</p><h2>Your financial life,<br /><em>handled with care.</em></h2></div><div className="fpl-resource-list"><article><ShieldCheck size={22} /><div><h3>Your data stays yours</h3><p>Clear controls and a product built around your privacy.</p></div></article><article><Sparkles size={22} /><div><h3>Intelligence you can question</h3><p>Useful context, visible reasoning, and no mysterious automatic moves.</p></div></article><article><Globe2 size={22} /><div><h3>A workspace that grows with you</h3><p>From your everyday financial picture to your next meaningful goal.</p></div></article></div></section>
+    <section className="fpl-closing"><p className="fpl-overline">YOUR NEXT CHAPTER STARTS HERE.</p><h2>Spend less time<br />figuring it out.</h2><p>Start building a clearer relationship with your money today.</p><Link to="/register" className="fpl-lime-button">Get started for free <ArrowUpRight size={16} /></Link></section><footer className="fpl-footer"><Link to="/" className="fpl-logo">finpilot<span>°</span></Link><span>© {new Date().getFullYear()} FinPilot. Made for clearer next moves.</span><div><Link to="/login">Log in</Link><Link to="/register">Get started</Link></div></footer>
   </main>;
 }
