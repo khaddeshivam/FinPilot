@@ -1,119 +1,30 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { register } from '../api/authApi';
+import { Eye, EyeOff } from 'lucide-react';
 import { isAxiosError } from 'axios';
-import FlightPathMark from '../../../components/brand/FlightPathMark';
+import { register } from '../api/authApi';
+import AuthLayout from '../components/AuthLayout';
+
+function passwordLevel(password: string) { return Number(password.length >= 8) + Number(/[A-Z]/.test(password) && /[a-z]/.test(password)) + Number(/\d|[^A-Za-z0-9]/.test(password)); }
 
 export default function RegisterPage() {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [fullName, setFullName] = useState(''); const [showPassword, setShowPassword] = useState(false);
+  const level = useMemo(() => passwordLevel(password), [password]);
+  const registerMutation = useMutation({ mutationFn: register, onSuccess: () => navigate('/login') });
+  const errorMessage = () => { const error = registerMutation.error; if (!error || !isAxiosError(error)) return null; const data = error.response?.data; return data?.fieldErrors ? Object.values(data.fieldErrors as Record<string, string>).join(', ') : data?.message ?? 'Something went wrong. Please try again.'; };
+  const handleSubmit = (event: FormEvent) => { event.preventDefault(); registerMutation.mutate({ email, password, fullName }); };
+  const strengthLabel = ['', 'Getting started', 'Good foundation', 'Strong password'][level];
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-
-  const registerMutation = useMutation({
-    mutationFn: register,
-    onSuccess: () => navigate('/login'),
-  });
-
-  // GlobalExceptionHandler returns { fieldErrors: { email: "...", password: "..." } }
-  // for validation failures, and { message: "..." } for things like duplicate
-  // email - surface whichever shape actually came back.
-  function errorMessage(): string | null {
-    const err = registerMutation.error;
-    if (!err || !isAxiosError(err)) return null;
-    const data = err.response?.data;
-    if (data?.fieldErrors) {
-      return Object.values(data.fieldErrors as Record<string, string>).join(', ');
-    }
-    return data?.message ?? 'Something went wrong. Please try again.';
-  }
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    registerMutation.mutate({ email, password, fullName });
-  }
-
-  return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 font-sans">
-      {/* Brand panel - echoes the landing page hero, quieter (no draw-in animation) */}
-      <div className="hidden lg:flex flex-col justify-between bg-ink text-white p-12">
-        <Link to="/" className="font-display font-semibold text-lg tracking-tight">
-          FinPilot
-        </Link>
-        <div>
-          <FlightPathMark className="w-full h-auto max-w-sm mb-8" />
-          <p className="text-ink-muted text-lg leading-relaxed max-w-sm">
-            Track spending, set budgets that hold, and get a monthly summary grounded in your real numbers.
-          </p>
-        </div>
-        <p className="font-mono text-xs text-ink-muted">FinPilot</p>
-      </div>
-
-      {/* Form panel */}
-      <div className="flex items-center justify-center bg-paper p-8">
-        <div className="w-full max-w-sm">
-          <h1 className="font-display font-semibold text-2xl text-ink mb-1">Create your account</h1>
-          <p className="text-sm text-slate-500 mb-6">Start tracking your finances with FinPilot</p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Full name</label>
-              <input
-                type="text"
-                required
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal"
-              />
-              <p className="text-xs text-slate-400 mt-1">At least 8 characters</p>
-            </div>
-
-            {registerMutation.isError && (
-              <p className="text-sm text-red-600">{errorMessage()}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={registerMutation.isPending}
-              className="w-full rounded-lg bg-ink text-white py-2.5 text-sm font-medium hover:bg-ink/90 disabled:opacity-50 transition"
-            >
-              {registerMutation.isPending ? 'Creating account...' : 'Create account'}
-            </button>
-          </form>
-
-          <p className="text-sm text-slate-500 mt-6 text-center">
-            Already have an account?{' '}
-            <Link to="/login" className="text-ink font-medium hover:underline">
-              Log in
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  return <AuthLayout eyebrow="START YOUR NEXT CHAPTER" title="Money, in one considered place." description="Create a calmer, more connected view of your financial world.">
+    <h2>Create your account</h2><p className="fpa-intro">Start with the essentials. You can add accounts and budgets when you are ready.</p>
+    <form className="fpa-form" onSubmit={handleSubmit} noValidate>
+      <div className="fpa-field"><label htmlFor="register-name">Full name</label><input className="fpa-input" id="register-name" type="text" autoComplete="name" required value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>
+      <div className="fpa-field"><label htmlFor="register-email">Email address</label><input className="fpa-input" id="register-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+      <div className="fpa-field"><label htmlFor="register-password">Password</label><div className="fpa-input-wrap"><input className="fpa-input fpa-input--password" id="register-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} /><button className="fpa-password-toggle" type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div><div className="fpa-strength" data-level={level} aria-label={password ? `Password strength: ${strengthLabel}` : 'Password strength'}><i /><i /><i /></div><p className="fpa-field-hint">{password ? strengthLabel : 'Use a password you do not use elsewhere.'}</p><ul className="fpa-requirements"><li>At least 8 characters</li><li>Maximum 72 bytes, per the secure password policy</li></ul></div>
+      {registerMutation.isError && <p className="fpa-feedback" role="alert">{errorMessage()}</p>}
+      <button className="fpa-submit" type="submit" disabled={registerMutation.isPending}>{registerMutation.isPending ? 'Creating account…' : 'Create account'}</button>
+    </form>
+    <p className="fpa-switch">Already have an account? <Link className="fpa-text-link" to="/login">Sign in</Link></p>
+  </AuthLayout>;
 }

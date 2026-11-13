@@ -39,6 +39,12 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
   return response.data;
 }
 
+export async function requestPasswordReset(email: string): Promise<void> { await apiClient.post('/auth/password-reset/request', { email }); }
+export async function confirmPasswordReset(token: string, password: string): Promise<void> { await apiClient.post('/auth/password-reset/confirm', { token, password }); }
+export async function confirmEmailVerification(token: string): Promise<void> { await apiClient.post('/auth/email-verification/confirm', { token }); }
+export async function resendEmailVerification(email: string): Promise<void> { await apiClient.post('/auth/email-verification/resend', { email }); }
+export async function exchangeOAuthCode(token: string): Promise<AuthResponse> { const response = await apiClient.post<AuthResponse>('/auth/oauth/exchange', { token }); return response.data; }
+
 export async function getCurrentUser(): Promise<UserResponse> {
   const response = await apiClient.get<UserResponse>('/users/me');
   return response.data;
