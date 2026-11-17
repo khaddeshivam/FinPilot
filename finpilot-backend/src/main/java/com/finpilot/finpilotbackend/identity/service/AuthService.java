@@ -58,6 +58,11 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
 
+        return issueSession(user);
+    }
+
+    @Transactional
+    public AuthResponse issueSession(User user) {
         String accessToken = jwtService.generateAccessToken(user);
         // A login starts a new token family; every rotation of this session's
         // refresh token will inherit it.

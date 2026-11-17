@@ -18,10 +18,12 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AccountActionService accountActionService;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, AccountActionService accountActionService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.accountActionService = accountActionService;
     }
 
     @Transactional
@@ -43,6 +45,7 @@ public class UserService {
 
         try {
             User saved = userRepository.save(user);
+            accountActionService.sendVerification(saved);
             return new UserResponse(saved);
         } catch (DataIntegrityViolationException ex) {
             // The existsByEmail check above is a TOCTOU race: two concurrent

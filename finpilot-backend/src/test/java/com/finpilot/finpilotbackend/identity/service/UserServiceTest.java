@@ -45,12 +45,14 @@ class UserServiceTest {
     private UserRepository userRepository;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private AccountActionService accountActionService;
 
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, passwordEncoder);
+        userService = new UserService(userRepository, passwordEncoder, accountActionService);
         // Stubbed LENIENT because the "email already exists" test throws before
         // reaching passwordEncoder.encode — see @MockitoSettings above.
         when(passwordEncoder.encode(anyString())).thenReturn("hashed");

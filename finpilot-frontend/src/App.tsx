@@ -8,6 +8,7 @@ import { useAuthStore } from './store/authStore';
 import LandingPage from './features/marketing/pages/LandingPage';
 import LoginPage from './features/auth/pages/LoginPage';
 import RegisterPage from './features/auth/pages/RegisterPage';
+import { ForgotPasswordPage, OAuthCallbackPage, ResetPasswordPage, VerifyEmailPage } from './features/auth/pages/PasswordRecoveryPages';
 
 // All authenticated pages are lazy-loaded. This moves recharts (the largest
 // dependency) and the AI page into their own chunks that are only fetched after
@@ -88,6 +89,10 @@ export default function App() {
         <Route path="/" element={<RootRoute />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>

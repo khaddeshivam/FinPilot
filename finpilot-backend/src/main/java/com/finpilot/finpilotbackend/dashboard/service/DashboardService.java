@@ -15,8 +15,11 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -71,25 +74,39 @@ public class DashboardService {
     }
 
     // N months of income/expense/net, oldest first - powers the trend chart.
-    // Loops month-by-month reusing the same sumByTypeAndDateRange query the
-    // single-month dashboard already uses, rather than a new grouped-by-month
-    // SQL query - at a personal finance app's data volume (a handful of
-    // months, hundreds of transactions) this is simple and fast enough;
-    // a heavier grouped query would be premature optimization here.
+    // One grouped database query covers the whole range (the old version ran
+    // two queries per month: 24 for a 12-month chart). Days are bucketed into
+    // months here, and months with no transactions are filled with zero.
     public List<MonthlyTrendResponse> getTrends(User user, int months) {
         List<MonthlyTrendResponse> trends = new ArrayList<>();
+        if (months <= 0) {
+            return trends;
+        }
+
         LocalDate currentMonthStart = LocalDate.now().withDayOfMonth(1);
+        LocalDate rangeStart = currentMonthStart.minusMonths(months - 1L);
+        LocalDate rangeEnd = currentMonthStart.plusMonths(1);
+
+        Map<YearMonth, BigDecimal> incomeByMonth = new HashMap<>();
+        Map<YearMonth, BigDecimal> expenseByMonth = new HashMap<>();
+        for (Object[] row : transactionRepository.sumDailyByType(user.getId(), rangeStart, rangeEnd)) {
+            YearMonth month = YearMonth.from((LocalDate) row[0]);
+            CategoryType type = (CategoryType) row[1];
+            BigDecimal total = (BigDecimal) row[2];
+            if (type == CategoryType.INCOME) {
+                incomeByMonth.merge(month, total, BigDecimal::add);
+            } else if (type == CategoryType.EXPENSE) {
+                expenseByMonth.merge(month, total, BigDecimal::add);
+            }
+        }
 
         for (int i = months - 1; i >= 0; i--) {
             LocalDate monthStart = currentMonthStart.minusMonths(i);
-            LocalDate monthEnd = monthStart.plusMonths(1);
-
-            BigDecimal income = zeroIfNull(transactionRepository.sumByTypeAndDateRange(
-                    user.getId(), CategoryType.INCOME, monthStart, monthEnd));
-            BigDecimal expense = zeroIfNull(transactionRepository.sumByTypeAndDateRange(
-                    user.getId(), CategoryType.EXPENSE, monthStart, monthEnd));
-
-            trends.add(new MonthlyTrendResponse(monthStart, income, expense));
+            YearMonth month = YearMonth.from(monthStart);
+            trends.add(new MonthlyTrendResponse(
+                    monthStart,
+                    incomeByMonth.getOrDefault(month, BigDecimal.ZERO),
+                    expenseByMonth.getOrDefault(month, BigDecimal.ZERO)));
         }
         return trends;
     }

@@ -54,6 +54,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             @Param("endDate") LocalDate endDate
     );
 
+    // Daily income/expense totals for a date range, grouped in the database so
+    // the dashboard trend chart needs ONE query instead of two per month.
+    // Each row is [LocalDate, CategoryType, BigDecimal]; the caller buckets the
+    // days into months. At most (days in range x 2) rows come back.
+    @Query("SELECT t.transactionDate, t.transactionType, SUM(t.amount) FROM Transaction t " +
+            "WHERE t.user.id = :userId " +
+            "AND t.transactionDate >= :startDate AND t.transactionDate < :endDate " +
+            "GROUP BY t.transactionDate, t.transactionType")
+    List<Object[]> sumDailyByType(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
     // Per-category totals for a date range - powers the dashboard's spending
     // breakdown chart. Ordered highest-spend-first so the top categories lead.
     @Query("SELECT t.category.name, SUM(t.amount) FROM Transaction t " +

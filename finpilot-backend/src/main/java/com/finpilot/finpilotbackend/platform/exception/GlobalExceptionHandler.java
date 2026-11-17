@@ -6,10 +6,13 @@ import com.finpilot.finpilotbackend.finance.exception.StatementImportException;
 import com.finpilot.finpilotbackend.identity.exception.EmailAlreadyExistsException;
 import com.finpilot.finpilotbackend.identity.exception.InvalidCredentialsException;
 import com.finpilot.finpilotbackend.identity.exception.InvalidRefreshTokenException;
+import com.finpilot.finpilotbackend.identity.exception.RateLimitExceededException;
 import com.finpilot.finpilotbackend.intelligence.exception.AiNotConfiguredException;
 import com.finpilot.finpilotbackend.intelligence.exception.AiServiceException;
 import com.finpilot.finpilotbackend.planning.exception.InvalidBudgetException;
 import jakarta.persistence.OptimisticLockException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +33,8 @@ import java.util.Map;
 // consistent, regardless of which domain threw it.
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
@@ -59,6 +64,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidRefreshTokenException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
         return errorResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage());
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleRateLimit(RateLimitExceededException ex) {
+        return errorResponse(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", ex.getMessage());
     }
 
     @ExceptionHandler(InvalidBudgetException.class)
@@ -129,6 +139,8 @@ public class GlobalExceptionHandler {
                     errorResponse(status, status.getReasonPhrase(), status.getReasonPhrase()).getBody();
             return ResponseEntity.status(status).headers(er.getHeaders()).body(body);
         }
+
+        log.error("Unhandled exception", ex);
         // Last-resort catch-all. Never expose the exception message to the
         // client (it may contain stack traces, SQL, or internal paths).
         return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error",
